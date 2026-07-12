@@ -124,6 +124,10 @@ interface KeyringViewProps {
   onDelete: (profile: Profile) => void;
   onApply: (id: string, targets: ClientTarget[]) => void;
   onTest: (id: string) => void;
+  onTestAll: () => void;
+  /** 正在检测端点的方案 ID；检测不锁定其他操作。 */
+  testingIds: ReadonlySet<string>;
+  onDiscoverModels: (id: string) => void;
   onProbe: (id: string) => void;
   onCopyKey: (profile: Profile) => void;
   onReorder: (ids: string[]) => void;
@@ -149,6 +153,9 @@ export function KeyringView({
   onDelete,
   onApply,
   onTest,
+  onTestAll,
+  testingIds,
+  onDiscoverModels,
   onProbe,
   onCopyKey,
   onReorder,
@@ -204,7 +211,21 @@ export function KeyringView({
           <span className="head-note">{profiles.length} 个方案 · 点击行展开 · 拖动排序</span>
           <button
             type="button"
+            className="ghost-pill"
+            style={{ marginLeft: "auto" }}
+            title="并发检测全部方案的端点延迟，期间不影响其他操作"
+            disabled={profiles.length === 0 || testingIds.size > 0}
+            onClick={onTestAll}
+          >
+            {testingIds.size > 0
+              ? <LoaderCircle size={13} className="spin" />
+              : <Gauge size={13} />}
+            检测全部
+          </button>
+          <button
+            type="button"
             className="primary-pill"
+            style={{ marginLeft: 0 }}
             disabled={Boolean(busy)}
             onClick={onCreate}
           >
@@ -247,7 +268,8 @@ export function KeyringView({
               const metrics: EndpointMetrics = activeEndpoint
                 ? getEndpointMetrics(activeEndpoint)
                 : { sampleCount: 0 };
-              const testing = busy === "test" && busyId === profile.id;
+              const testing = testingIds.has(profile.id);
+              const discovering = busy === "test" && busyId === profile.id;
               const probing = busy === "probe" && busyId === profile.id;
               const applying = busy === "apply" && busyId === profile.id;
               const rowClass = [
@@ -344,9 +366,9 @@ export function KeyringView({
                       <button
                         type="button"
                         className="icon-ghost"
-                        title="检测端点"
+                        title="检测端点延迟（不影响其他操作）"
                         aria-label={`检测 ${profile.name} 端点`}
-                        disabled={Boolean(busy)}
+                        disabled={testing}
                         onClick={(event) => {
                           event.stopPropagation();
                           onTest(profile.id);
@@ -429,6 +451,18 @@ export function KeyringView({
                             <dd>{relativeTime(profile.lastAppliedAt)}</dd>
                           </dl>
                           <span className="keyring-actions">
+                            <button
+                              type="button"
+                              className="ghost-pill"
+                              title="请求模型列表并保存可用模型"
+                              disabled={Boolean(busy)}
+                              onClick={() => onDiscoverModels(profile.id)}
+                            >
+                              {discovering
+                                ? <LoaderCircle size={12} className="spin" />
+                                : <RefreshCw size={12} />}
+                              识别模型
+                            </button>
                             <button
                               type="button"
                               className="ghost-pill"

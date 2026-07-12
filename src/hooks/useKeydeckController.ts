@@ -30,6 +30,9 @@ export interface KeydeckController {
   applyProfile: (id: string, targets?: ClientTarget[]) => Promise<void>;
   testProfile: (id: string) => Promise<void>;
   checkProfileHealth: (id: string) => Promise<void>;
+  checkAllProfilesHealth: () => Promise<void>;
+  /** 正在后台检测端点的方案 ID 集合；检测不锁定其他操作。 */
+  testingIds: ReadonlySet<string>;
   probeProfile: (id: string) => Promise<void>;
   deleteProfile: (profile: Profile) => Promise<boolean>;
   copyKey: (profile: Profile) => Promise<void>;
@@ -64,8 +67,10 @@ export function useKeydeckController(): KeydeckController {
   const [busyId, setBusyId] = useState<string>();
   const [bootstrapError, setBootstrapError] = useState<string>();
   const [toast, setToast] = useState<ToastState>();
+  const [testingIds, setTestingIds] = useState<ReadonlySet<string>>(() => new Set());
   const requestSequence = useRef(0);
   const commandLock = useRef(false);
+  const testingRef = useRef(new Set<string>());
 
   const loadLatest = useCallback(async (): Promise<boolean> => {
     const requestId = ++requestSequence.current;
@@ -265,28 +270,59 @@ export function useKeydeckController(): KeydeckController {
     }
   }
 
-  async function checkProfileHealth(id: string): Promise<void> {
-    if (commandLock.current) return;
-    commandLock.current = true;
-    setBusy("test");
-    setBusyId(id);
+  /**
+   * 执行单个方案的无凭据端点检测，维护行级检测状态。
+   *
+   * 检测是只读探测，不占用全局命令锁；检测期间的保存/删除由主进程的
+   * revision 校验兜底，过期结果会被拒绝提交。
+   *
+   * @returns 可达与总端点数；该方案已在检测中时返回 undefined。
+   */
+  async function runHealthCheck(id: string): Promise<{ reachable: number; total: number } | undefined> {
+    if (testingRef.current.has(id)) return undefined;
+    testingRef.current.add(id);
+    setTestingIds(new Set(testingRef.current));
     try {
       const tested = await api.checkProfileHealth(id);
-      if (!await refreshSilently("端点检测已完成")) return;
       const reachable = tested.endpoints.filter((endpoint) => (
         endpoint.health?.status === "healthy" || endpoint.health?.status === "limited"
       )).length;
+      return { reachable, total: tested.endpoints.length };
+    } finally {
+      testingRef.current.delete(id);
+      setTestingIds(new Set(testingRef.current));
+    }
+  }
+
+  async function checkProfileHealth(id: string): Promise<void> {
+    try {
+      const result = await runHealthCheck(id);
+      if (!result) return;
+      if (!await refreshSilently("端点检测已完成")) return;
       setToast({
-        kind: reachable > 0 ? "success" : "error",
-        message: `端点检测完成：${reachable} / ${tested.endpoints.length} 可达`,
+        kind: result.reachable > 0 ? "success" : "error",
+        message: `端点检测完成：${result.reachable} / ${result.total} 可达`,
       });
     } catch (error) {
       setToast({ kind: "error", message: describeError(error) });
-    } finally {
-      commandLock.current = false;
-      setBusy(null);
-      setBusyId(undefined);
     }
+  }
+
+  async function checkAllProfilesHealth(): Promise<void> {
+    const ids = data.profiles
+      .map((profile) => profile.id)
+      .filter((id) => !testingRef.current.has(id));
+    if (ids.length === 0) return;
+    const results = await Promise.allSettled(ids.map((id) => runHealthCheck(id)));
+    await refreshSilently("端点检测已完成");
+    const settled = results
+      .map((result) => (result.status === "fulfilled" ? result.value : undefined));
+    const reachableProfiles = settled
+      .filter((value) => value !== undefined && value.reachable > 0).length;
+    setToast({
+      kind: reachableProfiles > 0 ? "success" : "error",
+      message: `全部检测完成：${reachableProfiles} / ${ids.length} 个方案可达`,
+    });
   }
 
   async function probeProfile(id: string): Promise<void> {
@@ -464,6 +500,8 @@ export function useKeydeckController(): KeydeckController {
     applyProfile,
     testProfile,
     checkProfileHealth,
+    checkAllProfilesHealth,
+    testingIds,
     probeProfile,
     deleteProfile,
     copyKey,

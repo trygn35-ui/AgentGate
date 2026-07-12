@@ -230,6 +230,9 @@ function App(): ReactElement {
           onDelete={setPendingDelete}
           onApply={(id, targets) => void controller.applyProfile(id, targets)}
           onTest={(id) => void controller.checkProfileHealth(id)}
+          onTestAll={() => void controller.checkAllProfilesHealth()}
+          testingIds={controller.testingIds}
+          onDiscoverModels={(id) => void controller.testProfile(id)}
           onProbe={(id) => void controller.probeProfile(id)}
           onCopyKey={(profile) => void controller.copyKey(profile)}
           onReorder={(ids) => void controller.reorderProfiles(ids)}
