@@ -310,3 +310,41 @@ describe("请求记录持久化", () => {
     expect(writes.at(-1).entries).toHaveLength(2);
   });
 });
+
+describe("中止归类", () => {
+  it("流中已出现完成标记时，socket 中止改判为已完成", () => {
+    let now = 30_000;
+    const monitor = new RequestMonitorService({ now: () => now });
+    const id = monitor.start({
+      client: "codex",
+      profileName: "子代理请求",
+      protocol: "anthropic",
+      streaming: true,
+    });
+    monitor.responseStarted(id, { statusCode: 200, streaming: true });
+    now += 40;
+    monitor.observeChunk(id, 'event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"text":"好"}}\n\n');
+    monitor.observeChunk(id, 'event: message_stop\ndata: {"type":"message_stop"}\n\n');
+    now += 5;
+    monitor.end(id, { outcome: "aborted" });
+
+    expect(monitor.list()[0]).toMatchObject({ state: "completed", outcome: "completed" });
+  });
+
+  it("没有完成标记的中止保持已中止", () => {
+    let now = 31_000;
+    const monitor = new RequestMonitorService({ now: () => now });
+    const id = monitor.start({
+      client: "codex",
+      profileName: "真实中止",
+      protocol: "openai-responses",
+      streaming: true,
+    });
+    monitor.responseStarted(id, { statusCode: 200, streaming: true });
+    now += 40;
+    monitor.observeChunk(id, 'data: {"type":"response.output_text.delta","delta":"部分"}\n\n');
+    monitor.end(id, { outcome: "aborted" });
+
+    expect(monitor.list()[0]).toMatchObject({ state: "aborted", outcome: "aborted" });
+  });
+});

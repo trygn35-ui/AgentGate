@@ -64,6 +64,8 @@ let mockProfiles: Profile[] = [
     lastAppliedAt: minutesAgo(18),
     health: { status: "healthy", latencyMs: 186, checkedAt: minutesAgo(2) },
     tokenUsageTotal: 12_480_000,
+    tokenInputTotal: 11_260_000,
+    tokenCachedTotal: 10_620_000,
   },
   {
     id: "openai-main",
@@ -86,6 +88,8 @@ let mockProfiles: Profile[] = [
     updatedAt: minutesAgo(51),
     health: { status: "healthy", latencyMs: 243, checkedAt: minutesAgo(8) },
     tokenUsageTotal: 863_200,
+    tokenInputTotal: 741_000,
+    tokenCachedTotal: 668_000,
   },
   {
     id: "gemini-fast",

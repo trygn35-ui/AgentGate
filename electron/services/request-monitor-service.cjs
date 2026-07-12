@@ -302,6 +302,25 @@ function extractRequestMetadata(payload) {
   }
 }
 
+/**
+ * 判断已接收的流数据是否包含协议级完成标记。
+ *
+ * 客户端常在拿到完整响应后立即关闭连接，socket 层面表现为中止；
+ * 只要流里出现过终止事件，就应把请求视为正常完成。
+ */
+const TERMINAL_MARKER_PATTERN = new RegExp([
+  'message_stop',
+  'response\\.completed',
+  'response\\.incomplete',
+  '\\[DONE\\]',
+  '"finish_reason"\\s*:\\s*"',
+  '"finishReason"\\s*:\\s*"',
+].join('|'))
+
+function hasTerminalMarker(source) {
+  return TERMINAL_MARKER_PATTERN.test(source)
+}
+
 function mergeUsage(current, next) {
   if (!next) return current
   const merged = { ...(current || {}) }
@@ -486,6 +505,9 @@ class RequestMonitorService {
     entry.usageBuffer = `${entry.usageBuffer}${decoded}`.slice(-MAX_DETECTION_BUFFER_BYTES)
     const tailUsage = extractTokenUsageFromSource(entry.usageBuffer)
     if (tailUsage) entry.tokenUsage = mergeUsage(entry.tokenUsage, tailUsage)
+    if (!entry.sawCompletion && hasTerminalMarker(entry.usageBuffer)) {
+      entry.sawCompletion = true
+    }
     if (entry.firstTokenLatencyMs === undefined) {
       entry.detectionBuffer = `${entry.detectionBuffer}${decoded}`
         .slice(-MAX_DETECTION_BUFFER_BYTES)
@@ -527,7 +549,9 @@ class RequestMonitorService {
     const completedAtMs = this.now()
     entry.completedAt = new Date(completedAtMs).toISOString()
     entry.durationMs = Math.max(0, completedAtMs - entry.startedAtMs)
-    entry.outcome = outcome || (
+    // 流里已出现协议级完成标记时，socket 层的中止只是客户端提前收尾，不改判为中止。
+    const effectiveOutcome = outcome === 'aborted' && entry.sawCompletion ? undefined : outcome
+    entry.outcome = effectiveOutcome || (
       entry.statusCode !== undefined && entry.statusCode >= 400 ? 'failed' : 'completed'
     )
     entry.state = entry.outcome === 'completed' ? 'completed' : entry.outcome

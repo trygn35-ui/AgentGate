@@ -136,12 +136,8 @@ function createServices() {
       mainWindow.webContents.send(CHANNELS.stateChanged, event)
     },
     onRequestEnded: (entry) => {
-      if (!entry.profileId) return
-      const usage = entry.tokenUsage
-      const total = Number.isFinite(usage?.totalTokens)
-        ? usage.totalTokens
-        : (usage?.inputTokens || 0) + (usage?.outputTokens || 0)
-      void profileService.addTokenUsage(entry.profileId, total).catch(() => {})
+      if (!entry.profileId || !entry.tokenUsage) return
+      void profileService.addTokenUsage(entry.profileId, entry.tokenUsage).catch(() => {})
     },
     store: requestLogStore,
   })

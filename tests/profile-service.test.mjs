@@ -232,3 +232,37 @@ describe("方案服务", () => {
     })).rejects.toThrow("cannot contain credentials or fragments");
   });
 });
+
+describe("Token 用量统计", () => {
+  it("按请求累计总量、输入与缓存命中", async () => {
+    const { profileStore } = createTestStores(root);
+    const profileService = new ProfileService(profileStore, testVault);
+    const created = await profileService.save({
+      name: "统计方案",
+      protocol: "openai-responses",
+      baseUrl: "https://usage.example/v1",
+      apiKey: "sk-usage-secret",
+      model: "gpt-5-codex",
+      authMode: "bearer",
+      targets: ["codex"],
+    });
+
+    await profileService.addTokenUsage(created.id, {
+      totalTokens: 1_000,
+      inputTokens: 900,
+      cachedTokens: 700,
+    });
+    await profileService.addTokenUsage(created.id, {
+      inputTokens: 100,
+      outputTokens: 20,
+      cachedTokens: 50,
+    });
+    await profileService.addTokenUsage(created.id, undefined);
+    await profileService.addTokenUsage("not-a-uuid", { totalTokens: 5 });
+
+    const [profile] = await profileService.list();
+    expect(profile.tokenUsageTotal).toBe(1_120);
+    expect(profile.tokenInputTotal).toBe(1_000);
+    expect(profile.tokenCachedTotal).toBe(750);
+  });
+});

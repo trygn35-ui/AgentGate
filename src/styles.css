@@ -615,7 +615,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, [role="button"]
 .keyring-row { border-bottom: 1px solid var(--line); animation: rise 320ms cubic-bezier(.2, .9, .25, 1) backwards; }
 .keyring-head {
   display: grid;
-  grid-template-columns: 34px minmax(140px, 1.1fr) auto minmax(100px, .9fr) auto auto;
+  grid-template-columns: 34px minmax(130px, 1.1fr) auto auto minmax(90px, .9fr) auto auto;
   align-items: center;
   gap: 14px;
   min-height: 64px;

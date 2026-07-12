@@ -184,6 +184,8 @@ const StoredProfileSchema = LegacyStoredProfileSchema.extend({
   connectionRevision: z.number().int().positive(),
   modelsCheckedAt: z.string().optional(),
   tokenUsageTotal: z.number().int().nonnegative().optional(),
+  tokenInputTotal: z.number().int().nonnegative().optional(),
+  tokenCachedTotal: z.number().int().nonnegative().optional(),
 })
 
 const LegacyProfileStoreSchema = z.object({

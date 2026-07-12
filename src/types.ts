@@ -59,6 +59,10 @@ export interface Profile {
   modelsCheckedAt?: string;
   /** 该 Key 经网关转发累计消耗的 Token 数。 */
   tokenUsageTotal?: number;
+  /** 累计输入 Token，用于计算平均缓存率。 */
+  tokenInputTotal?: number;
+  /** 累计缓存命中 Token。 */
+  tokenCachedTotal?: number;
 }
 
 export interface SaveProfileInput {

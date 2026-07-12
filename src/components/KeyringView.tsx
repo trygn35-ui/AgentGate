@@ -17,7 +17,7 @@ import {
 import { useEffect, useState } from "react";
 import type { DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, ReactElement } from "react";
 import { CLIENT_META, PROTOCOL_META } from "../config";
-import { getEndpointMetrics, getHealthBarTone, LIMITED_LATENCY_MS } from "../lib/health";
+import { cacheRateTier, getEndpointMetrics, getHealthBarTone, LIMITED_LATENCY_MS } from "../lib/health";
 import type { EndpointMetrics } from "../lib/health";
 import { formatTokenCount, relativeTime } from "../lib/format";
 import type { ClientTarget, GatewayState, Profile, ProfileEndpoint } from "../types";
@@ -92,6 +92,16 @@ function endpointDot(endpoint: ProfileEndpoint): string {
   if (status === "limited") return "dot-warn";
   if (status === "unhealthy") return "dot-bad";
   return "dot-unknown";
+}
+
+/** 累计平均缓存率：累计缓存命中 ÷ 累计输入。 */
+function cumulativeCacheRate(profile: Profile): number | undefined {
+  const input = profile.tokenInputTotal;
+  const cached = profile.tokenCachedTotal;
+  if (!input || cached === undefined || !Number.isFinite(input) || !Number.isFinite(cached)) {
+    return undefined;
+  }
+  return Math.min(100, (cached / input) * 100);
 }
 
 function endpointLatency(endpoint: ProfileEndpoint): string {
@@ -297,6 +307,14 @@ export function KeyringView({
                     <span className="keyring-usage" title="该密钥经网关转发累计消耗的 Token">
                       <code>{formatTokenCount(profile.tokenUsageTotal ?? 0)}</code>
                       <small>累计 Token</small>
+                    </span>
+                    <span className="keyring-usage" title="累计缓存命中 Token 占累计输入的比例">
+                      <code className={cacheRateTier(cumulativeCacheRate(profile))}>
+                        {cumulativeCacheRate(profile) === undefined
+                          ? "--"
+                          : `${cumulativeCacheRate(profile)?.toFixed(1)}%`}
+                      </code>
+                      <small>平均缓存率</small>
                     </span>
                     <HealthBars endpoint={activeEndpoint} />
                     <span className="keyring-stat">

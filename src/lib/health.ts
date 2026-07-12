@@ -36,6 +36,15 @@ export function getHealthBarTone(sample: HealthSample): HealthBarTone {
   return limitedByLatency ? "limited" : "healthy";
 }
 
+/** 缓存率色阶：≥98% 绿、95-98% 蓝、90-95% 黄、<90% 红。 */
+export function cacheRateTier(percent?: number): string {
+  if (percent === undefined || !Number.isFinite(percent)) return "tier-quiet";
+  if (percent >= 98) return "tier-good";
+  if (percent >= 95) return "tier-info";
+  if (percent >= 90) return "tier-warn";
+  return "tier-bad";
+}
+
 export function getEndpointMetrics(endpoint: ProfileEndpoint): EndpointMetrics {
   const now = Date.now();
   const samples = (endpoint.healthHistory ?? []).filter((sample) => {

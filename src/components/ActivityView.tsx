@@ -9,6 +9,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { ReactElement } from "react";
 import { CLIENT_META } from "../config";
 import { formatDateTime, formatDuration, formatTokenCount } from "../lib/format";
+import { cacheRateTier } from "../lib/health";
 import type { ActiveRequest, ClientTarget, HistoryEntry } from "../types";
 import type { FeedTab, RequestFilter } from "../ui-types";
 
@@ -58,15 +59,6 @@ function latencyTier(milliseconds?: number): string {
   if (milliseconds < 10_000) return "tier-info";
   if (milliseconds < 30_000) return "tier-warn";
   if (milliseconds < 60_000) return "tier-orange";
-  return "tier-bad";
-}
-
-/** 缓存率色阶：≥98% 绿、95-98% 蓝、90-95% 黄、<90% 红。 */
-function cacheTier(percent?: number): string {
-  if (percent === undefined || !Number.isFinite(percent)) return "tier-quiet";
-  if (percent >= 98) return "tier-good";
-  if (percent >= 95) return "tier-info";
-  if (percent >= 90) return "tier-warn";
   return "tier-bad";
 }
 
@@ -235,7 +227,7 @@ export function ActivityView({
                     <small>缓存 {formatTokenCount(tokens?.cachedTokens)} · 推理 {formatTokenCount(tokens?.reasoningTokens)}</small>
                   </span>
                   <span className="cache-rate" title="缓存命中 Token 占输入的比例">
-                    <code className={cacheTier(rate)}>{rate === undefined ? "--" : `${rate.toFixed(1)}%`}</code>
+                    <code className={cacheRateTier(rate)}>{rate === undefined ? "--" : `${rate.toFixed(1)}%`}</code>
                     <small>缓存率</small>
                   </span>
                   <span className="request-timing">

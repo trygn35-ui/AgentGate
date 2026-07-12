@@ -659,19 +659,23 @@ class ProfileService {
   }
 
   /**
-   * 累加方案的历史 Token 用量。
+   * 累加方案的历史 Token 用量与缓存统计。
    *
    * 由请求监控在每次请求结束时调用；方案不存在或增量无效时静默忽略，
    * 统计失败不得影响网关转发。
    *
    * @param {string} id 方案 UUID。
-   * @param {number} tokens 本次请求消耗的 Token 总数。
+   * @param {object} usage 本次请求的 Token 计量（totalTokens/inputTokens/cachedTokens）。
    * @returns {Promise<void>} 持久化完成后的 Promise。
    */
-  async addTokenUsage(id, tokens) {
+  async addTokenUsage(id, usage) {
     const idResult = ProfileIdSchema.safeParse(id)
-    const amount = Number(tokens)
-    if (!idResult.success || !Number.isFinite(amount) || amount <= 0) return
+    const positive = (value) => (Number.isFinite(value) && value > 0 ? value : 0)
+    const total = positive(usage?.totalTokens)
+      || positive(usage?.inputTokens) + positive(usage?.outputTokens)
+    const input = positive(usage?.inputTokens)
+    const cached = positive(usage?.cachedTokens)
+    if (!idResult.success || total + input + cached <= 0) return
     return this.serial.run(async () => {
       const data = await this.store.read()
       const index = data.profiles.findIndex((profile) => profile.id === idResult.data)
@@ -679,7 +683,9 @@ class ProfileService {
       const current = data.profiles[index]
       data.profiles[index] = {
         ...current,
-        tokenUsageTotal: Math.round((current.tokenUsageTotal || 0) + amount),
+        tokenUsageTotal: Math.round((current.tokenUsageTotal || 0) + total),
+        tokenInputTotal: Math.round((current.tokenInputTotal || 0) + input),
+        tokenCachedTotal: Math.round((current.tokenCachedTotal || 0) + cached),
       }
       await this.store.write(data)
     })
