@@ -140,6 +140,7 @@ export function OverviewView({
               const open = pickerFor === target;
               const cardClass = [
                 "socket-card",
+                `tone-${CLIENT_META[target].tone}`,
                 profile ? "" : "empty",
                 open ? "picker-open" : "",
                 flashTarget === target ? "flash" : "",

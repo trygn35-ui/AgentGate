@@ -24,6 +24,8 @@
   --bad-soft: #FBE9E3;
   --violet: #7E6AC8;
   --violet-soft: #F0EBFA;
+  --blue: #3E7BD4;
+  --blue-soft: #E8F0FC;
   --info: #2F78D0;
   --orange: #C96F2A;
   --serif: Georgia, "Times New Roman", "Source Han Serif SC", "Noto Serif SC", SimSun, serif;
@@ -60,6 +62,8 @@
   --bad-soft: #442C26;
   --violet: #A797DE;
   --violet-soft: #322D45;
+  --blue: #7FADE8;
+  --blue-soft: #24334A;
   --info: #7FADE8;
   --orange: #E0A265;
   --shadow: 0 1px 2px rgba(0, 0, 0, .25), 0 14px 40px -24px rgba(0, 0, 0, .55);
@@ -89,6 +93,8 @@
     --bad-soft: #442C26;
     --violet: #A797DE;
     --violet-soft: #322D45;
+    --blue: #7FADE8;
+    --blue-soft: #24334A;
     --info: #7FADE8;
     --orange: #E0A265;
     --shadow: 0 1px 2px rgba(0, 0, 0, .25), 0 14px 40px -24px rgba(0, 0, 0, .55);
@@ -145,6 +151,13 @@ button:focus-visible, input:focus-visible, select:focus-visible, [role="button"]
 
 .mono { font-family: var(--mono); }
 .spin { animation: spin 800ms linear infinite; }
+
+/* ---------- 品牌色调：Claude 橙 / Codex 绿 / Gemini 蓝 / OpenCode 紫 ---------- */
+.tone-accent { --tone: var(--accent-ink); --tone-soft: var(--accent-soft); --tone-edge: var(--accent-edge); }
+.tone-good { --tone: var(--good); --tone-soft: var(--good-soft); --tone-edge: color-mix(in srgb, var(--good) 36%, var(--line)); }
+.tone-blue { --tone: var(--blue); --tone-soft: var(--blue-soft); --tone-edge: color-mix(in srgb, var(--blue) 36%, var(--line)); }
+.tone-violet { --tone: var(--violet); --tone-soft: var(--violet-soft); --tone-edge: color-mix(in srgb, var(--violet) 36%, var(--line)); }
+.tone-warn { --tone: var(--warn); --tone-soft: var(--warn-soft); --tone-edge: color-mix(in srgb, var(--warn) 36%, var(--line)); }
 
 /* ---------- 应用外壳 ---------- */
 .app-shell {
@@ -400,6 +413,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, [role="button"]
 }
 .socket-cell { position: relative; min-width: 0; }
 .socket-card {
+  position: relative;
   display: block;
   width: 100%;
   min-height: 112px;
@@ -410,14 +424,27 @@ button:focus-visible, input:focus-visible, select:focus-visible, [role="button"]
   border-radius: 12px;
   text-align: left;
   cursor: pointer;
+  overflow: hidden;
   box-shadow: var(--shadow);
   transition: border-color 180ms ease, transform 200ms cubic-bezier(.2, .9, .25, 1), box-shadow 200ms ease;
   animation: rise 320ms cubic-bezier(.2, .9, .25, 1) backwards;
 }
+/* 顶部品牌色条：一眼区分四个客户端 */
+.socket-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--tone, var(--line-strong));
+  opacity: .9;
+}
 .socket-card.empty { background: var(--soft); border-color: var(--line-strong); box-shadow: none; }
-.socket-card.picker-open { border-color: var(--accent-edge); }
+.socket-card.empty::before { opacity: .3; }
+.socket-card.picker-open { border-color: var(--tone-edge, var(--accent-edge)); }
 .socket-card:hover {
-  border-color: var(--accent-edge);
+  border-color: var(--tone-edge, var(--accent-edge));
   transform: translateY(-2px);
   box-shadow: var(--pop);
 }
@@ -431,6 +458,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, [role="button"]
   white-space: nowrap;
   font-size: 13px;
   font-weight: 700;
+  color: var(--tone, var(--ink));
 }
 .socket-title svg { margin-left: auto; color: var(--ink-quiet); flex: 0 0 auto; }
 .socket-profile { display: block; margin-top: 12px; min-width: 0; }
@@ -647,6 +675,16 @@ button:focus-visible, input:focus-visible, select:focus-visible, [role="button"]
 .keyring-glyph.good { color: var(--good); background: var(--good-soft); }
 .keyring-glyph.warn { color: var(--warn); background: var(--warn-soft); }
 .keyring-glyph.violet { color: var(--violet); background: var(--violet-soft); }
+.keyring-glyph.blue { color: var(--blue); background: var(--blue-soft); }
+
+/* 密钥行的适用客户端色点 */
+.keyring-targets { display: inline-flex; align-items: center; gap: 3px; margin-left: 8px; }
+.keyring-targets > i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--tone, var(--line-strong));
+}
 .keyring-name { min-width: 0; }
 .keyring-name-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .keyring-name-line strong {
@@ -811,7 +849,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, [role="button"]
   gap: 8px;
   min-height: 36px;
   padding: 0 11px;
-  color: var(--accent-ink);
+  color: var(--tone, var(--accent-ink));
   background: var(--card);
   border: 1px solid var(--line-strong);
   border-radius: 8px;
@@ -821,7 +859,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, [role="button"]
   cursor: pointer;
   transition: border-color 140ms ease, background 140ms ease;
 }
-.assign-button:hover:not(:disabled) { border-color: var(--accent-edge); }
+.assign-button:hover:not(:disabled) { border-color: var(--tone-edge, var(--accent-edge)); }
 .assign-button:active:not(:disabled) { transform: scale(.98); }
 .assign-button.active {
   color: var(--good);
@@ -939,8 +977,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, [role="button"]
 .tag-client {
   flex: 0 0 auto;
   padding: 2px 7px;
-  color: var(--accent-ink);
-  background: var(--accent-soft);
+  color: var(--tone, var(--accent-ink));
+  background: var(--tone-soft, var(--accent-soft));
   border-radius: 10px;
   font-size: 10px;
   font-weight: 700;
@@ -1371,7 +1409,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, [role="button"]
   cursor: pointer;
   transition: border-color 140ms ease, background 140ms ease;
 }
-.target-option.checked { background: var(--accent-soft); border-color: var(--accent-edge); }
+.target-option.checked { background: var(--tone-soft, var(--accent-soft)); border-color: var(--tone-edge, var(--accent-edge)); }
 .target-option.incompatible { opacity: .45; cursor: not-allowed; }
 .target-check {
   display: grid;
@@ -1384,9 +1422,13 @@ button:focus-visible, input:focus-visible, select:focus-visible, [role="button"]
   border-radius: 5px;
   transition: background 140ms ease;
 }
-.target-option.checked .target-check { background: var(--accent); border-color: var(--accent); }
+.target-option.checked .target-check {
+  background: var(--tone, var(--accent));
+  border-color: var(--tone, var(--accent));
+}
 .target-copy { min-width: 0; }
 .target-copy strong { display: block; font-size: 12px; font-weight: 650; color: var(--ink); }
+.target-option.checked .target-copy strong { color: var(--tone, var(--ink)); }
 .target-copy small { display: block; margin-top: 1px; color: var(--ink-quiet); font-size: 10.5px; }
 
 .tool-search-row {

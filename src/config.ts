@@ -19,6 +19,8 @@ export interface ProtocolMeta {
 export interface ClientMeta {
   label: string;
   short: string;
+  /** 品牌色调：Claude 橙、Codex 绿、Gemini 蓝、OpenCode 紫。 */
+  tone: string;
 }
 
 export const PROTOCOL_META: Record<Protocol, ProtocolMeta> = {
@@ -43,16 +45,16 @@ export const PROTOCOL_META: Record<Protocol, ProtocolMeta> = {
   gemini: {
     label: "Google Gemini",
     short: "Gemini",
-    tone: "violet",
+    tone: "blue",
     compatible: ["gemini", "opencode"],
   },
 };
 
 export const CLIENT_META: Record<ClientTarget, ClientMeta> = {
-  claude: { label: "Claude Code", short: "Claude" },
-  codex: { label: "Codex", short: "Codex" },
-  opencode: { label: "OpenCode", short: "OpenCode" },
-  gemini: { label: "Gemini CLI", short: "Gemini" },
+  claude: { label: "Claude Code", short: "Claude", tone: "accent" },
+  codex: { label: "Codex", short: "Codex", tone: "good" },
+  opencode: { label: "OpenCode", short: "OpenCode", tone: "violet" },
+  gemini: { label: "Gemini CLI", short: "Gemini", tone: "blue" },
 };
 
 export const CLIENT_TARGET_ORDER: ClientTarget[] = [

@@ -52,6 +52,13 @@ function clientLabel(client: ActiveRequest["client"]): string {
     : String(client);
 }
 
+/** 客户端品牌色类：Claude 橙 / Codex 绿 / Gemini 蓝 / OpenCode 紫。 */
+function clientTone(client: ActiveRequest["client"]): string {
+  return client in CLIENT_META
+    ? `tone-${CLIENT_META[client as ClientTarget].tone}`
+    : "";
+}
+
 /** 首字时延色阶：<5s 绿、5-10s 蓝、10-30s 黄、30-60s 橙、60s+ 红。 */
 function latencyTier(milliseconds?: number): string {
   if (milliseconds === undefined || !Number.isFinite(milliseconds)) return "tier-quiet";
@@ -211,7 +218,9 @@ export function ActivityView({
                   <span className="request-main">
                     <span className="request-title">
                       <strong>{request.profileName}</strong>
-                      <small className="tag-client">{clientLabel(request.client)}</small>
+                      <small className={`tag-client ${clientTone(request.client)}`}>
+                        {clientLabel(request.client)}
+                      </small>
                     </span>
                     <code className="request-sub" title={request.upstreamUrl}>
                       {formatClock(request.startedAt)} · {request.upstreamUrl || "正在解析上游"}

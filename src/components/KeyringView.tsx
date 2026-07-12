@@ -325,6 +325,15 @@ export function KeyringView({
                       <code className="keyring-meta">
                         {PROTOCOL_META[profile.protocol].short} · {profile.baseUrl.replace(/^https?:\/\//, "")} · {profile.keyHint}
                       </code>
+                      <span className="keyring-targets" aria-hidden="true">
+                        {profile.targets.map((target) => (
+                          <i
+                            key={target}
+                            className={`tone-${CLIENT_META[target].tone}`}
+                            title={CLIENT_META[target].label}
+                          />
+                        ))}
+                      </span>
                     </span>
                     <span className="keyring-usage" title="该密钥经网关转发累计消耗的 Token">
                       <code>{formatTokenCount(profile.tokenUsageTotal ?? 0)}</code>
@@ -444,7 +453,16 @@ export function KeyringView({
                               </>
                             )}
                             <dt>适用客户端</dt>
-                            <dd>{profile.targets.map((target) => CLIENT_META[target].short).join("、")}</dd>
+                            <dd>
+                              {profile.targets.map((target, targetIndex) => (
+                                <span key={target}>
+                                  {targetIndex > 0 && "、"}
+                                  <b className={`tone-${CLIENT_META[target].tone}`} style={{ color: "var(--tone)", fontWeight: 650 }}>
+                                    {CLIENT_META[target].short}
+                                  </b>
+                                </span>
+                              ))}
+                            </dd>
                             <dt>自动择优</dt>
                             <dd>{profile.autoSwitch.enabled ? "每 2 分钟按 1 小时可用率择优" : "关闭"}</dd>
                             <dt>上次切换</dt>
