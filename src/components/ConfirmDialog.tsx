@@ -1,10 +1,11 @@
 import { useEffect, useRef } from "react";
 import type { ReactElement } from "react";
+import { useI18n } from "../i18n";
 
 interface ConfirmDialogProps {
   title: string;
   message: string;
-  confirmLabel?: string;
+  confirmLabel: string;
   cancelLabel?: string;
   danger?: boolean;
   onConfirm: () => void;
@@ -19,13 +20,15 @@ interface ConfirmDialogProps {
 export function ConfirmDialog({
   title,
   message,
-  confirmLabel = "确认",
-  cancelLabel = "取消",
+  confirmLabel,
+  cancelLabel,
   danger,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps): ReactElement {
+  const { m } = useI18n();
   const confirmRef = useRef<HTMLButtonElement>(null);
+  const cancelText = cancelLabel ?? m.confirm.cancel;
 
   useEffect(() => {
     confirmRef.current?.focus();
@@ -45,12 +48,12 @@ export function ConfirmDialog({
         onCancel();
       }}
     >
-      <button type="button" className="editor-scrim" aria-label={cancelLabel} onClick={onCancel} />
+      <button type="button" className="editor-scrim" aria-label={cancelText} onClick={onCancel} />
       <div className="confirm-dialog">
         <h2>{title}</h2>
         <p>{message}</p>
         <div className="confirm-foot">
-          <button type="button" className="btn-ghost" onClick={onCancel}>{cancelLabel}</button>
+          <button type="button" className="btn-ghost" onClick={onCancel}>{cancelText}</button>
           <button
             type="button"
             ref={confirmRef}

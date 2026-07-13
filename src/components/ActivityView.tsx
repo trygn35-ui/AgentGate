@@ -7,17 +7,12 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import type { ReactElement } from "react";
 import { CLIENT_META } from "../config";
+import { useI18n } from "../i18n";
+import type { Messages } from "../i18n";
 import { formatDuration, formatTokenCount } from "../lib/format";
 import { cacheRateTier } from "../lib/health";
 import type { ActiveRequest, ClientTarget } from "../types";
 import type { RequestFilter } from "../ui-types";
-
-const CLOCK_FORMATTER = new Intl.DateTimeFormat("zh-CN", {
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  hour12: false,
-});
 
 interface RequestMeta {
   label: string;
@@ -27,15 +22,18 @@ interface RequestMeta {
   spin?: boolean;
 }
 
-const REQUEST_META: Record<ActiveRequest["state"], RequestMeta> = {
-  connecting: { label: "CONNECT", tint: "tint-accent", icon: "loader", spin: true },
-  "waiting-first-token": { label: "WAIT", tint: "tint-accent", icon: "loader", spin: true },
-  streaming: { label: "STREAM", tint: "tint-good", icon: "dot", breathe: true },
-  completed: { label: "DONE", tint: "tint-good", icon: "check" },
-  failed: { label: "FAIL", tint: "tint-bad", icon: "alert" },
-  aborted: { label: "ABORT", tint: "tint-warn", icon: "dot" },
-  cancelled: { label: "CANCEL", tint: "tint-warn", icon: "dot" },
-};
+function requestMeta(m: Messages): Record<ActiveRequest["state"], RequestMeta> {
+  const s = m.stream.states;
+  return {
+    connecting: { label: s.connect, tint: "tint-accent", icon: "loader", spin: true },
+    "waiting-first-token": { label: s.wait, tint: "tint-accent", icon: "loader", spin: true },
+    streaming: { label: s.stream, tint: "tint-good", icon: "dot", breathe: true },
+    completed: { label: s.done, tint: "tint-good", icon: "check" },
+    failed: { label: s.fail, tint: "tint-bad", icon: "alert" },
+    aborted: { label: s.abort, tint: "tint-warn", icon: "dot" },
+    cancelled: { label: s.cancel, tint: "tint-warn", icon: "dot" },
+  };
+}
 
 const REASONING_LABEL: Record<string, string> = {
   minimal: "MIN",
@@ -77,9 +75,9 @@ function cacheRate(request: ActiveRequest): number | undefined {
   return Math.min(100, (cached / input) * 100);
 }
 
-function formatClock(value: string): string {
+function formatClock(value: string, clock: Intl.DateTimeFormat): string {
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "--" : CLOCK_FORMATTER.format(date);
+  return Number.isNaN(date.getTime()) ? "--" : clock.format(date);
 }
 
 function isActive(request: ActiveRequest): boolean {
@@ -111,6 +109,7 @@ interface ActivityViewProps {
  * 展示进行中与最近完成的请求，含模型、Token、缓存率与时延指标。
  */
 export function ActivityView({ requests }: ActivityViewProps): ReactElement {
+  const { locale, m, fill } = useI18n();
   const [filter, setFilter] = useState<RequestFilter>("all");
   const [now, setNow] = useState(() => Date.now());
   const activeCount = requests.filter(isActive).length;
@@ -118,6 +117,13 @@ export function ActivityView({ requests }: ActivityViewProps): ReactElement {
     () => requests.filter((request) => matchesFilter(request, filter)),
     [filter, requests],
   );
+  const meta = useMemo(() => requestMeta(m), [m]);
+  const clock = useMemo(() => new Intl.DateTimeFormat(locale, {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }), [locale]);
 
   useEffect(() => {
     if (activeCount === 0) return undefined;
@@ -125,22 +131,24 @@ export function ActivityView({ requests }: ActivityViewProps): ReactElement {
     return () => window.clearInterval(timer);
   }, [activeCount]);
 
+  const liveText = activeCount > 0 ? fill(m.stream.streaming, { count: activeCount }) : m.stream.idle;
+
   return (
-    <main className="page-scroll" aria-label="动态">
+    <main className="page-scroll" aria-label={m.stream.title}>
       <div className="page-inner">
         <div className="section-head rise" style={{ alignItems: "center" }}>
-          <h1>Stream</h1>
+          <h1>{m.stream.title}</h1>
           <span className="head-note">
-{activeCount > 0 ? `${activeCount} STREAMING` : "IDLE"} · LAST 100 RETAINED
+            <span key={liveText} className="swap-text">{liveText}</span> · {m.stream.retained}
           </span>
           <span style={{ marginLeft: "auto" }} />
           {(
-            <div className="req-filters" role="radiogroup" aria-label="请求筛选">
+            <div className="req-filters" role="radiogroup" aria-label={m.stream.title}>
               {([
-                ["all", "ALL"],
-                ["active", "LIVE"],
-                ["completed", "DONE"],
-                ["failed", "FAIL"],
+                ["all", m.stream.all],
+                ["active", m.stream.live],
+                ["completed", m.stream.done],
+                ["failed", m.stream.fail],
               ] as Array<[RequestFilter, string]>).map(([value, label]) => (
                 <button
                   type="button"
@@ -159,7 +167,7 @@ export function ActivityView({ requests }: ActivityViewProps): ReactElement {
 
         <div>
           {visibleRequests.map((request, index) => {
-              const meta = REQUEST_META[request.state];
+              const state = meta[request.state];
               const startedAt = new Date(request.startedAt).getTime();
               const elapsed = request.durationMs ?? (
                 isActive(request) && Number.isFinite(startedAt)
@@ -182,10 +190,10 @@ export function ActivityView({ requests }: ActivityViewProps): ReactElement {
                   style={{ animationDelay: `${Math.min(index, 12) * 40}ms` }}
                 >
                   <span
-                    className={`request-state-icon ${meta.tint} ${meta.breathe ? "breathe" : ""}`}
-                    title={meta.label}
+                    className={`request-state-icon ${state.tint} ${state.breathe ? "breathe" : ""}`}
+                    title={state.label}
                   >
-                    <RequestStateIcon meta={meta} />
+                    <RequestStateIcon meta={state} />
                   </span>
                   <span className="request-main">
                     <span className="request-title">
@@ -195,7 +203,7 @@ export function ActivityView({ requests }: ActivityViewProps): ReactElement {
                       </small>
                     </span>
                     <code className="request-sub" title={request.upstreamUrl}>
-                      {formatClock(request.startedAt)} · {request.upstreamUrl || "RESOLVING"}
+                      {formatClock(request.startedAt, clock)} · {request.upstreamUrl || m.stream.resolving}
                     </code>
                   </span>
                   <span className="request-model">
@@ -203,29 +211,27 @@ export function ActivityView({ requests }: ActivityViewProps): ReactElement {
                     <small>{subline}</small>
                   </span>
                   <span className="request-tokens">
-                    <code className="tok-in" title="输入 Token">↓{formatTokenCount(tokens?.inputTokens)}</code>
-                    <code className="tok-out" title="输出 Token">↑{formatTokenCount(tokens?.outputTokens)}</code>
+                    <code className="tok-in">↓{formatTokenCount(tokens?.inputTokens)}</code>
+                    <code className="tok-out">↑{formatTokenCount(tokens?.outputTokens)}</code>
                     <small>CACHED {formatTokenCount(tokens?.cachedTokens)}</small>
                   </span>
-                  <span className="cache-rate" title="缓存命中 Token 占输入的比例">
+                  <span className="cache-rate">
                     <code className={cacheRateTier(rate)}>
                       {rate === undefined ? "———" : (rate / 100).toFixed(3)}
                     </code>
-                    <small>CACHE</small>
+                    <small>{m.stream.cache}</small>
                   </span>
                   <span className="request-timing">
                     <code>{formatDuration(elapsed)}</code>
                     <small className={latencyTier(firstLatency)}>{firstLabel} {formatDuration(firstLatency)}</small>
                   </span>
-                  <strong className={`request-state-label ${meta.tint}`}>{meta.label}</strong>
+                  <strong className={`request-state-label ${state.tint}`}>{state.label}</strong>
                 </article>
               );
             })}
           {visibleRequests.length === 0 && (
             <p className="feed-empty">
-              {requests.length === 0
-                ? "NO REQUESTS YET · 网关收到请求后会在这里即时显示"
-                : "NO MATCHING REQUESTS"}
+              {requests.length === 0 ? m.stream.empty : m.stream.noMatch}
             </p>
           )}
         </div>

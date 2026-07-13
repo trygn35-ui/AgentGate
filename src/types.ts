@@ -151,11 +151,14 @@ export interface GatewayStartSettings {
 
 export type AppTheme = "system" | "light" | "dark";
 
+export type AppLanguage = "system" | "zh" | "ja" | "en";
+
 export interface AppSettings {
   launchAtLogin: boolean;
   closeToTray: boolean;
   startGatewayOnLaunch: boolean;
   theme: AppTheme;
+  language: AppLanguage;
   experimentalToolBridge: boolean;
 }
 

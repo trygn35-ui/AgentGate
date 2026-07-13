@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CLIENT_META, DEFAULT_SETTINGS, EMPTY_BOOTSTRAP } from "../config";
+import { MESSAGES, fill, resolveLocale } from "../i18n";
 import { api } from "../lib/api";
 import { describeError, formatDuration, formatTokenCount } from "../lib/format";
 import type {
@@ -55,6 +56,13 @@ export interface AgentGateController {
  */
 export function useAgentGateController(): AgentGateController {
   const [data, setData] = useState<BootstrapData>(EMPTY_BOOTSTRAP);
+
+  // 提示条文案要跟随语言，但把 m 塞进每个 useCallback 的依赖会让回调身份随语言
+  // 变化、连带重挂事件监听。用 ref 持有最新文案，回调身份保持稳定。
+  const language = data.settings?.language;
+  const messages = useMemo(() => MESSAGES[resolveLocale(language)], [language]);
+  const m = useRef(messages);
+  m.current = messages;
 
   /** 应用完整快照；缺失的可选字段沿用当前值，避免请求记录和设置被清空。 */
   const mergeBootstrap = useCallback((next: BootstrapData): void => {
@@ -114,7 +122,7 @@ export function useAgentGateController(): AgentGateController {
       setToast({
         kind: "error",
         message: completedMessage
-          ? `${completedMessage}，但界面刷新失败：${refreshError}`
+          ? fill(m.current.toast.refreshFailed, { message: completedMessage, error: refreshError })
           : refreshError,
       });
       return false;
@@ -141,11 +149,14 @@ export function useAgentGateController(): AgentGateController {
     void refreshSilently();
     if (event.type === "gateway-state-changed") return;
     if (event.type === "auto-switch-error") {
-      setToast({ kind: "error", message: event.message ?? "自动检测失败" });
+      setToast({ kind: "error", message: event.message ?? m.current.toast.autoSwitchFailed });
       return;
     }
     if (event.switched && event.baseUrl) {
-      setToast({ kind: "info", message: `已自动切换到 ${event.baseUrl}` });
+      setToast({
+        kind: "info",
+        message: fill(m.current.toast.autoSwitched, { url: event.baseUrl }),
+      });
     }
   }), [refreshSilently]);
 
@@ -162,7 +173,7 @@ export function useAgentGateController(): AgentGateController {
     setBusy("save");
     try {
       const saved = await api.saveProfile(input);
-      const completedMessage = `已保存“${saved.name}”`;
+      const completedMessage = fill(m.current.toast.saved, { name: saved.name });
       if (await refreshSilently(completedMessage)) {
         setToast({ kind: "success", message: completedMessage });
       }
@@ -183,7 +194,7 @@ export function useAgentGateController(): AgentGateController {
     setBusyId(profile.id);
     try {
       const duplicate = await api.duplicateProfile(profile.id);
-      const completedMessage = `已复制为“${duplicate.name}”`;
+      const completedMessage = fill(m.current.toast.duplicated, { name: duplicate.name });
       if (await refreshSilently(completedMessage)) {
         setToast({ kind: "success", message: completedMessage });
       }
@@ -201,7 +212,7 @@ export function useAgentGateController(): AgentGateController {
   async function reorderProfiles(ids: string[]): Promise<void> {
     if (commandLock.current) return;
     if (!api.reorderProfiles) {
-      setToast({ kind: "error", message: "当前主进程版本尚不支持方案排序" });
+      setToast({ kind: "error", message: m.current.toast.orderFailed });
       return;
     }
     const previous = data.profiles;
@@ -213,7 +224,7 @@ export function useAgentGateController(): AgentGateController {
     setData((current) => ({ ...current, profiles: optimistic }));
     try {
       await api.reorderProfiles(ids);
-      await refreshSilently("排序已保存");
+      await refreshSilently(m.current.toast.reordered);
     } catch (error) {
       setData((current) => ({ ...current, profiles: previous }));
       setToast({ kind: "error", message: describeError(error) });
@@ -227,12 +238,15 @@ export function useAgentGateController(): AgentGateController {
     setBusyId(id);
     try {
       const result = await api.applyProfile(id, targets);
-      const labels = result.assignedTargets
+      const targetLabels = result.assignedTargets
         .map((target) => CLIENT_META[target].short)
-        .join("、");
-      const resultMessage = result.gateway.status === "running"
-        ? `“${result.profile.name}”已成为 ${labels} 的当前网关方案`
-        : `“${result.profile.name}”已设为 ${labels} 的下次启动方案`;
+        .join(", ");
+      const resultMessage = fill(
+        result.gateway.status === "running"
+          ? m.current.toast.assignedRunning
+          : m.current.toast.assignedStopped,
+        { name: result.profile.name, targets: targetLabels },
+      );
       if (await refreshSilently(resultMessage)) {
         setToast({ kind: "success", message: resultMessage });
       }
@@ -257,15 +271,15 @@ export function useAgentGateController(): AgentGateController {
     setBusyId(id);
     try {
       const tested = await api.testProfile(id);
-      await refreshSilently("模型识别已完成");
+      await refreshSilently(m.current.keys.discoverModels);
 
       if (tested.availableModels.length > 0) {
         setToast({
           kind: "success",
-          message: `已识别 ${tested.availableModels.length} 个可用模型`,
+          message: fill(m.current.toast.modelsFound, { count: tested.availableModels.length }),
         });
       } else {
-        setToast({ kind: "info", message: "请求已完成，但没有识别到模型" });
+        setToast({ kind: "info", message: m.current.toast.noModels });
       }
       return tested.availableModels;
     } catch (error) {
@@ -306,10 +320,13 @@ export function useAgentGateController(): AgentGateController {
     try {
       const result = await runHealthCheck(id);
       if (!result) return;
-      if (!await refreshSilently("端点检测已完成")) return;
+      if (!await refreshSilently(m.current.keys.testEndpoints)) return;
       setToast({
         kind: result.reachable > 0 ? "success" : "error",
-        message: `端点检测完成：${result.reachable} / ${result.total} 可达`,
+        message: fill(m.current.toast.healthDone, {
+          reachable: result.reachable,
+          total: result.total,
+        }),
       });
     } catch (error) {
       setToast({ kind: "error", message: describeError(error) });
@@ -322,21 +339,24 @@ export function useAgentGateController(): AgentGateController {
       .filter((id) => !testingRef.current.has(id));
     if (ids.length === 0) return;
     const results = await Promise.allSettled(ids.map((id) => runHealthCheck(id)));
-    await refreshSilently("端点检测已完成");
+    await refreshSilently(m.current.keys.testEndpoints);
     const settled = results
       .map((result) => (result.status === "fulfilled" ? result.value : undefined));
     const reachableProfiles = settled
       .filter((value) => value !== undefined && value.reachable > 0).length;
     setToast({
       kind: reachableProfiles > 0 ? "success" : "error",
-      message: `全部检测完成：${reachableProfiles} / ${ids.length} 个方案可达`,
+      message: fill(m.current.toast.healthAllDone, {
+        reachable: reachableProfiles,
+        total: ids.length,
+      }),
     });
   }
 
   async function probeProfile(id: string): Promise<void> {
     if (commandLock.current) return;
     if (!api.probeProfile) {
-      setToast({ kind: "error", message: "当前主进程版本尚不支持渠道实测" });
+      setToast({ kind: "error", message: m.current.toast.unsupported });
       return;
     }
     commandLock.current = true;
@@ -345,17 +365,28 @@ export function useAgentGateController(): AgentGateController {
     try {
       const result = await api.probeProfile(id);
       const usage = result.tokenUsage;
+      const cached = (usage?.cachedTokens ?? 0) > 0
+        ? ` (${m.current.keys.cache} ${formatTokenCount(usage?.cachedTokens)})`
+        : "";
       const usageText = usage
-        ? ` · ↓${formatTokenCount(usage.inputTokens)}${(usage.cachedTokens ?? 0) > 0 ? `（缓存 ${formatTokenCount(usage.cachedTokens)}）` : ""} ↑${formatTokenCount(usage.outputTokens)}`
+        ? ` · ↓${formatTokenCount(usage.inputTokens)}${cached} ↑${formatTokenCount(usage.outputTokens)}`
         : "";
       setToast(result.ok
         ? {
             kind: "success",
-            message: `实测通过 · ${result.model} · 首包 ${formatDuration(result.firstByteMs)} · 总耗时 ${formatDuration(result.totalMs)}${usageText}`,
+            message: fill(m.current.toast.probePass, {
+              model: result.model ?? "",
+              ttfb: formatDuration(result.firstByteMs),
+              total: formatDuration(result.totalMs),
+              usage: usageText,
+            }),
           }
         : {
             kind: "error",
-            message: `实测失败${result.statusCode !== undefined ? ` · HTTP ${result.statusCode}` : ""}${result.message ? ` · ${result.message}` : ""}`,
+            message: fill(m.current.toast.probeFail, {
+              status: result.statusCode !== undefined ? ` · HTTP ${result.statusCode}` : "",
+              message: result.message ? ` · ${result.message}` : "",
+            }),
           });
     } catch (error) {
       setToast({ kind: "error", message: describeError(error) });
@@ -373,7 +404,7 @@ export function useAgentGateController(): AgentGateController {
     setBusyId(profile.id);
     try {
       await api.deleteProfile(profile.id);
-      const completedMessage = `已删除“${profile.name}”`;
+      const completedMessage = fill(m.current.toast.deleted, { name: profile.name });
       if (await refreshSilently(completedMessage)) {
         setToast({ kind: "success", message: completedMessage });
       }
@@ -391,7 +422,10 @@ export function useAgentGateController(): AgentGateController {
   async function copyKey(profile: Profile): Promise<void> {
     try {
       await api.copyProfileKey(profile.id);
-      setToast({ kind: "info", message: `“${profile.name}”的密钥已复制` });
+      setToast({
+        kind: "info",
+        message: fill(m.current.toast.keyCopied, { name: profile.name }),
+      });
     } catch (error) {
       setToast({ kind: "error", message: describeError(error) });
     }
@@ -413,7 +447,7 @@ export function useAgentGateController(): AgentGateController {
       const requestId = ++requestSequence.current;
       const next = await api.startGateway(settings);
       if (requestId === requestSequence.current) mergeBootstrap(next);
-      setToast({ kind: "success", message: "本地网关已启动，并接管已分配的客户端" });
+      setToast({ kind: "success", message: m.current.toast.gatewayStarted });
     } catch (error) {
       setToast({ kind: "error", message: describeError(error) });
       await refreshSilently();
@@ -432,12 +466,12 @@ export function useAgentGateController(): AgentGateController {
       const next = await api.stopGateway();
       if (requestId === requestSequence.current) mergeBootstrap(next);
       const skipped = next.gatewayRecovery?.skippedTargets ?? [];
-      const skippedLabels = skipped.map((target) => CLIENT_META[target].short).join("、");
+      const targets = skipped.map((target) => CLIENT_META[target].short).join(", ");
       setToast({
         kind: skipped.length > 0 ? "info" : "success",
         message: skipped.length > 0
-          ? `本地网关已停止；已跳过用户修改的 ${skippedLabels}`
-          : "本地网关已停止",
+          ? fill(m.current.toast.gatewaySkipped, { targets })
+          : m.current.toast.gatewayStopped,
       });
     } catch (error) {
       setToast({ kind: "error", message: describeError(error) });
@@ -451,7 +485,7 @@ export function useAgentGateController(): AgentGateController {
   async function updateSettings(patch: Partial<AppSettings>): Promise<void> {
     if (commandLock.current) return;
     if (!api.updateSettings) {
-      setToast({ kind: "error", message: "当前主进程版本尚不支持保存应用设置" });
+      setToast({ kind: "error", message: m.current.toast.unsupported });
       return;
     }
     commandLock.current = true;
@@ -465,7 +499,7 @@ export function useAgentGateController(): AgentGateController {
         ? result.settings ?? optimistic
         : result;
       setData((current) => ({ ...current, settings: nextSettings }));
-      setToast({ kind: "success", message: "设置已保存" });
+      setToast({ kind: "success", message: m.current.toast.settingsSaved });
     } catch (error) {
       setData((current) => ({ ...current, settings: previous }));
       setToast({ kind: "error", message: describeError(error) });
@@ -477,16 +511,19 @@ export function useAgentGateController(): AgentGateController {
 
   async function checkForUpdate(): Promise<void> {
     if (!api.checkForUpdate) {
-      setToast({ kind: "error", message: "当前版本不支持在线更新" });
+      setToast({ kind: "error", message: m.current.toast.unsupported });
       return;
     }
     try {
       const state = await api.checkForUpdate();
       setData((current) => ({ ...current, update: state }));
       if (state.state === "up-to-date") {
-        setToast({ kind: "success", message: `已是最新版本 ${state.currentVersion}` });
+        setToast({
+          kind: "success",
+          message: fill(m.current.toast.upToDate, { version: state.currentVersion ?? "" }),
+        });
       } else if (state.state === "error") {
-        setToast({ kind: "error", message: state.message ?? "检查更新失败" });
+        setToast({ kind: "error", message: state.message ?? m.current.toast.updateCheckFailed });
       }
     } catch (error) {
       setToast({ kind: "error", message: describeError(error) });

@@ -18,6 +18,11 @@ with sync_playwright() as playwright:
     page.goto(URL, wait_until="networkidle")
     page.locator(".hero h1").wait_for()
 
+    # README 面向英文读者：先固定英文，之后才能按英文按钮名定位
+    page.get_by_role("button", name="设置", exact=True).click()
+    page.get_by_role("radio", name="English", exact=True).click()
+    page.wait_for_timeout(4600)  # 等「设置已保存」提示条自动消失
+
     def shoot(name: str) -> None:
         page.wait_for_timeout(700)  # 等入场动画结束
         page.screenshot(path=str(OUTPUT_DIR / f"{name}.png"))

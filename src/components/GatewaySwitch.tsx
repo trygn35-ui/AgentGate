@@ -1,4 +1,5 @@
 import type { ReactElement } from "react";
+import { useI18n } from "../i18n";
 import type { GatewayState } from "../types";
 
 interface GatewaySwitchProps {
@@ -8,26 +9,31 @@ interface GatewaySwitchProps {
   onStop: () => void;
 }
 
-const STATUS_LABEL = {
-  stopped: "网关已关闭",
-  starting: "网关正在启动",
-  running: "网关运行中",
-  stopping: "网关正在停止",
-  error: "网关需要处理",
-} as const;
-
 /**
  * 顶栏网关开关：胶囊形态的 role=switch，含状态点、文字和拨杆。
  *
  * starting/stopping 显示过渡状态；error 时点击执行恢复并关闭。
  */
 export function GatewaySwitch({ gateway, busy, onStart, onStop }: GatewaySwitchProps): ReactElement {
+  const { m } = useI18n();
   const enabled = gateway.status === "running" || gateway.status === "starting";
   const transitioning = gateway.status === "starting" || gateway.status === "stopping";
   const needsRecovery = gateway.status === "error" && gateway.routes.length > 0;
+  const statusLabel: Record<GatewayState["status"], string> = {
+    stopped: m.overview.heroOffline,
+    starting: m.overview.heroStarting,
+    running: m.overview.heroOnline,
+    stopping: m.overview.heroStopping,
+    error: m.overview.heroFault,
+  };
   const actionLabel = needsRecovery
-    ? "恢复配置并关闭本地网关"
-    : `${enabled ? "关闭" : "开启"}本地网关`;
+    ? m.gateway.recover
+    : enabled ? m.gateway.toggleOff : m.gateway.toggleOn;
+  const text = transitioning
+    ? m.gateway.syncing
+    : gateway.status === "error"
+      ? m.gateway.fault
+      : enabled ? m.gateway.online : m.gateway.offline;
   const className = [
     "gateway-switch",
     enabled ? "on" : "",
@@ -43,8 +49,8 @@ export function GatewaySwitch({ gateway, busy, onStart, onStop }: GatewaySwitchP
       aria-checked={enabled}
       aria-label={actionLabel}
       title={gateway.error
-        ? `${STATUS_LABEL[gateway.status]}：${gateway.error}`
-        : "客户端固定连接本地地址；切换方案不改客户端配置"}
+        ? `${statusLabel[gateway.status]}: ${gateway.error}`
+        : m.gateway.hint}
       disabled={busy}
       onClick={() => {
         if (enabled || needsRecovery) onStop();
@@ -52,13 +58,8 @@ export function GatewaySwitch({ gateway, busy, onStart, onStop }: GatewaySwitchP
       }}
     >
       <i className="gateway-dot" />
-      <strong>
-        {transitioning
-          ? "SYNCING"
-          : gateway.status === "error"
-            ? "FAULT"
-            : enabled ? "GATEWAY ONLINE" : "GATEWAY OFFLINE"}
-      </strong>
+      {/* key 变化时重挂载，触发 CSS 的文字切换动画 */}
+      <strong key={text} className="swap-text">{text}</strong>
     </button>
   );
 }

@@ -2,6 +2,7 @@ import { ArrowRight } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import { CLIENT_META, CLIENT_TARGET_ORDER, PROTOCOL_META } from "../config";
+import { useI18n } from "../i18n";
 import {
   computeDivergence,
   formatDivergence,
@@ -39,14 +40,6 @@ interface OverviewViewProps {
   onGoActivity: () => void;
 }
 
-function healthTag(profile: Profile): { text: string; className: string } {
-  const status = profile.health?.status ?? "unknown";
-  if (status === "healthy") return { text: `${profile.health?.latencyMs ?? 0} ms`, className: "tier-good" };
-  if (status === "limited") return { text: "LIMITED", className: "tier-warn" };
-  if (status === "unhealthy") return { text: "DOWN", className: "tier-bad" };
-  return { text: "", className: "tier-quiet" };
-}
-
 /**
  * 概览页：DIVERGENCE METER 与客户端铭牌。
  *
@@ -63,6 +56,7 @@ export function OverviewView({
   onApply,
   onGoActivity,
 }: OverviewViewProps): ReactElement {
+  const { m, fill } = useI18n();
   const [pickerFor, setPickerFor] = useState<ClientTarget>();
   const [flashTarget, setFlashTarget] = useState<ClientTarget>();
   const flashTimer = useRef<number>(undefined);
@@ -81,6 +75,14 @@ export function OverviewView({
     return () => window.removeEventListener("keydown", handleKey, true);
   }, [pickerFor]);
 
+  function healthTag(profile: Profile): { text: string; className: string } {
+    const status = profile.health?.status ?? "unknown";
+    if (status === "healthy") return { text: `${profile.health?.latencyMs ?? 0} ms`, className: "tier-good" };
+    if (status === "limited") return { text: m.keys.limited, className: "tier-warn" };
+    if (status === "unhealthy") return { text: m.keys.down, className: "tier-bad" };
+    return { text: "", className: "tier-quiet" };
+  }
+
   function pick(profileId: string, target: ClientTarget): void {
     setPickerFor(undefined);
     onApply(profileId, target);
@@ -95,56 +97,65 @@ export function OverviewView({
   const divergence = computeDivergence(profiles, gateway);
   const cacheRate = recentCacheRate(requests);
   const tokenToday = todayTokenTotal(profiles);
+  const cacheText = formatRate(cacheRate);
+  const tokenText = formatTokenTotal(tokenToday);
 
   const heroTitle = gateway.status === "starting"
-    ? "Gateway Starting"
+    ? m.overview.heroStarting
     : gateway.status === "stopping"
-      ? "Gateway Stopping"
+      ? m.overview.heroStopping
       : gateway.status === "error"
-        ? "Gateway Fault"
-        : gatewayOn ? "Gateway Online" : "Gateway Offline";
+        ? m.overview.heroFault
+        : gatewayOn ? m.overview.heroOnline : m.overview.heroOffline;
   const heroSub = gateway.status === "error"
-    ? gateway.error ?? "配置被外部修改，请在顶栏恢复并关闭网关"
+    ? gateway.error ?? m.overview.faultHint
     : gatewayOn
-      ? `${routeCount} ROUTES BOUND · ${profiles.length} PROFILES READY`
-      : "CLIENTS DIRECT TO UPSTREAM · TOGGLE GATEWAY TO BIND";
+      ? fill(m.overview.routesBound, { routes: routeCount, profiles: profiles.length })
+      : m.overview.directToUpstream;
+  const liveText = activeRequestCount > 0
+    ? fill(m.overview.streaming, { count: activeRequestCount })
+    : m.overview.idle;
 
   return (
-    <main className="page-scroll" aria-label="概览">
+    <main className="page-scroll" aria-label={m.nav.overview}>
       {pickerFor && (
         <button
           type="button"
           className="overlay-scrim"
-          aria-label="关闭浮层"
+          aria-label={m.editor.close}
           onClick={() => setPickerFor(undefined)}
         />
       )}
       <div className="page-inner">
-        <section aria-label="状态" className="hero rise">
-          <h1>{heroTitle}</h1>
+        <section aria-label={m.gateway.online} className="hero rise">
+          <h1 key={heroTitle} className="swap-text">{heroTitle}</h1>
           <p>
-            <span>{heroSub}</span>
+            <span key={heroSub} className="swap-text">{heroSub}</span>
             <button
               type="button"
               className={`live-link ${activeRequestCount > 0 ? "live" : ""}`}
               onClick={onGoActivity}
             >
               <i />
-              {activeRequestCount > 0 ? `${activeRequestCount} STREAMING` : "IDLE"}
+              <span key={liveText} className="swap-text">{liveText}</span>
               <ArrowRight size={11} />
             </button>
           </p>
         </section>
 
-        <section className="meter rise-1" aria-label="指标">
+        <section className="meter rise-1" aria-label={m.overview.divergence}>
           <div className="meter-cell">
             <div className="meter-label">D I V E R G E N C E</div>
             <NixieTubes
               value={divergence ? formatDivergence(divergence.ratio) : undefined}
               tier={divergence?.tier}
               label={divergence
-                ? `分歧率 ${formatDivergence(divergence.ratio)}，当前 ${divergence.currentMs} 毫秒，基准 ${divergence.baselineMs} 毫秒`
-                : "分歧率无数据，等待基准样本"}
+                ? fill(m.overview.baselineOf, {
+                  current: divergence.currentMs,
+                  baseline: divergence.baselineMs,
+                  profile: divergence.profileName,
+                })
+                : m.overview.awaitingBaseline}
             />
             <div
               className={`meter-sub ${divergence?.tier === "critical"
@@ -152,8 +163,12 @@ export function OverviewView({
                 : divergence?.tier === "diverging" ? "tier-warn" : ""}`}
             >
               {divergence
-                ? `${divergence.currentMs}ms / ${divergence.baselineMs}ms BASELINE · ${divergence.profileName}`
-                : gatewayOn ? "AWAITING BASELINE · 需 3 个探测样本" : "GATEWAY OFFLINE"}
+                ? fill(m.overview.baselineOf, {
+                  current: divergence.currentMs,
+                  baseline: divergence.baselineMs,
+                  profile: divergence.profileName,
+                })
+                : gatewayOn ? m.overview.awaitingBaseline : m.gateway.offline}
             </div>
           </div>
 
@@ -161,28 +176,35 @@ export function OverviewView({
 
           <div className="meter-cell">
             <div className="meter-label">C A C H E &nbsp; H I T</div>
-            <div className={`meter-plain ${cacheRate === undefined ? "dim" : ""}`}>
-              {formatRate(cacheRate)}
+            {/* key 绑定读数：只有数值真的变了才重挂载，播一次滚入动画 */}
+            <div
+              key={cacheText}
+              className={`meter-plain value-swap ${cacheRate === undefined ? "dim" : ""}`}
+            >
+              {cacheText}
             </div>
-            <div className="meter-sub">LAST HOUR · {requests.length} REQUESTS</div>
+            <div className="meter-sub">{fill(m.overview.lastHour, { count: requests.length })}</div>
           </div>
 
           <div className="meter-divider" />
 
           <div className="meter-cell">
             <div className="meter-label">T O K E N S</div>
-            <div className={`meter-plain ${tokenToday === 0 ? "dim" : ""}`}>
-              {formatTokenTotal(tokenToday)}
+            <div
+              key={tokenText}
+              className={`meter-plain value-swap ${tokenToday === 0 ? "dim" : ""}`}
+            >
+              {tokenText}
             </div>
-            <div className="meter-sub">TODAY · RESETS AT 00:00</div>
+            <div className="meter-sub">{m.overview.todayResets}</div>
           </div>
         </section>
 
-        <section aria-label="客户端" className="rise-2" style={{ marginTop: 22 }}>
+        <section aria-label={m.overview.clients} className="rise-2" style={{ marginTop: 22 }}>
           <div className="section-head">
-            <span className="kicker">CLIENTS</span>
-            <h2>World Lines</h2>
-            <span className="head-hint">CLICK TO JUMP · INSTANT</span>
+            <span className="kicker">{m.overview.clients}</span>
+            <h2>{m.overview.worldLines}</h2>
+            <span className="head-hint">{m.overview.clickToJump}</span>
           </div>
           <div className="socket-grid">
             {CLIENT_TARGET_ORDER.map((target, index) => {
@@ -204,21 +226,22 @@ export function OverviewView({
                 ? gatewayOn ? HEALTH_DOT[profile.health?.status ?? "unknown"] : "dot-warn"
                 : "dot-unknown";
               const detail = client?.drifted
-                ? "EXTERNAL EDIT DETECTED"
+                ? m.overview.externalEdit
                 : profile
                   ? profile.baseUrl.replace(/^https?:\/\//, "")
                   : route
-                    ? "PROFILE REMOVED"
+                    ? m.overview.profileRemoved
                     : client && !client.installed
-                      ? "CLIENT NOT DETECTED"
-                      : "NO PROFILE BOUND";
+                      ? m.overview.clientNotDetected
+                      : m.overview.noProfileBound;
+              const boundName = profile?.name ?? route?.profileName ?? m.overview.unbound;
               return (
                 <div className="socket-cell" key={target}>
                   <button
                     type="button"
                     className={cardClass}
                     style={{ animationDelay: `${80 + index * 45}ms` }}
-                    aria-label={`为 ${CLIENT_META[target].label} 选择方案`}
+                    aria-label={fill(m.overview.editToEnable, { client: CLIENT_META[target].label })}
                     aria-expanded={open}
                     onClick={() => setPickerFor(open ? undefined : target)}
                   >
@@ -229,7 +252,7 @@ export function OverviewView({
                     <span className="socket-profile">
                       <span className="socket-profile-line">
                         <i className={`socket-dot ${dotClass}`} />
-                        <strong>{profile?.name ?? route?.profileName ?? "UNBOUND"}</strong>
+                        <strong key={boundName} className="swap-text">{boundName}</strong>
                       </span>
                       <code className={`socket-detail ${client?.drifted ? "warn" : ""}`} title={detail}>
                         {detail}
@@ -237,11 +260,11 @@ export function OverviewView({
                     </span>
                   </button>
                   {open && (
-                    <div className="picker-menu" role="menu" aria-label="选择方案">
+                    <div className="picker-menu" role="menu" aria-label={m.overview.worldLines}>
                       {options.length > 0 ? options.map((option) => {
                         const current = route?.profileId === option.id;
                         const tag = current
-                          ? { text: "CURRENT", className: "tier-orange" }
+                          ? { text: m.overview.current, className: "tier-orange" }
                           : healthTag(option);
                         return (
                           <button
@@ -256,7 +279,8 @@ export function OverviewView({
                             <span style={{ minWidth: 0 }}>
                               <strong>{option.name}</strong>
                               <code>
-                                {PROTOCOL_META[option.protocol].short.toUpperCase()} · {option.model || "CLIENT DEFAULT"}
+                                {PROTOCOL_META[option.protocol].short.toUpperCase()} ·{" "}
+                                {option.model || m.overview.clientDefault}
                               </code>
                             </span>
                             <small className={tag.className}>{tag.text}</small>
@@ -266,8 +290,8 @@ export function OverviewView({
                         <button type="button" role="menuitem" className="picker-item" disabled>
                           <i className="dot-unknown" />
                           <span style={{ minWidth: 0 }}>
-                            <strong>没有适配此客户端的方案</strong>
-                            <code>编辑方案，勾选 {CLIENT_META[target].label}</code>
+                            <strong>{m.overview.noCompatibleProfile}</strong>
+                            <code>{fill(m.overview.editToEnable, { client: CLIENT_META[target].label })}</code>
                           </span>
                           <small />
                         </button>

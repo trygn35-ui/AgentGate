@@ -10,7 +10,9 @@ import {
   SunMoon,
 } from "lucide-react";
 import type { ReactElement, ReactNode } from "react";
-import type { AppSettings, AppTheme, UpdateState } from "../types";
+import { LOCALE_LABELS, useI18n } from "../i18n";
+import type { Messages } from "../i18n";
+import type { AppLanguage, AppSettings, AppTheme, UpdateState } from "../types";
 
 interface SettingToggleProps {
   title: string;
@@ -44,11 +46,13 @@ function SettingToggle({
   );
 }
 
-const THEMES: Array<{ value: AppTheme; label: string; icon: ReactNode }> = [
-  { value: "system", label: "SYSTEM", icon: <SunMoon size={12} /> },
-  { value: "light", label: "α FIELD", icon: <Sun size={12} /> },
-  { value: "dark", label: "β FIELD", icon: <Moon size={12} /> },
+const THEMES: Array<{ value: AppTheme; label: (m: Messages) => string; icon: ReactNode }> = [
+  { value: "system", label: (m) => m.config.system, icon: <SunMoon size={12} /> },
+  { value: "light", label: () => "α FIELD", icon: <Sun size={12} /> },
+  { value: "dark", label: () => "β FIELD", icon: <Moon size={12} /> },
 ];
+
+const LANGUAGES: AppLanguage[] = ["system", "zh", "ja", "en"];
 
 interface SettingsViewProps {
   settings: AppSettings;
@@ -75,39 +79,42 @@ function UpdateRow({
   onDownload: () => void;
   onInstall: () => void;
 }): ReactElement {
+  const { m, fill } = useI18n();
   const state = update?.state ?? "idle";
   const checking = state === "checking";
   const downloading = state === "downloading";
   const description = state === "available"
-    ? `发现新版本 ${update?.version}${update?.portable ? " · 便携版需手动下载" : ""}`
+    ? fill(m.config.updateAvailable, { version: update?.version ?? "" })
     : state === "downloading"
-      ? `正在下载 ${update?.percent ?? 0}%`
+      ? fill(m.config.updateDownloading, { percent: update?.percent ?? 0 })
       : state === "ready"
-        ? `新版本 ${update?.version} 已就绪，重启即可安装`
+        ? fill(m.config.updateReady, { version: update?.version ?? "" })
         : state === "up-to-date"
-          ? "已是最新版本"
+          ? m.config.updateLatest
           : state === "error"
-            ? update?.message ?? "检查更新失败"
-            : `当前版本 ${version}`;
+            ? update?.message ?? m.config.updateFailed
+            : fill(m.config.updateCurrent, { version });
 
   return (
     <div className="settings-theme-row">
       <span className="settings-row-copy">
-        <strong>软件更新</strong>
+        <strong>{m.config.update}</strong>
         <small className={state === "error" ? "tier-bad" : state === "ready" ? "tier-good" : ""}>
           {description}
         </small>
       </span>
       {state === "ready" && !update?.portable ? (
         <button type="button" className="primary-pill" onClick={onInstall}>
-          <ArrowDownToLine size={13} />重启并安装
+          <ArrowDownToLine size={13} />{m.config.installRestart}
         </button>
       ) : state === "available" ? (
         <button type="button" className="primary-pill" disabled={downloading} onClick={onDownload}>
           {downloading
             ? <LoaderCircle size={13} className="spin" />
             : <Download size={13} />}
-          {update?.portable ? "前往下载" : downloading ? `${update?.percent ?? 0}%` : "下载更新"}
+          {update?.portable
+            ? m.config.goDownload
+            : downloading ? `${update?.percent ?? 0}%` : m.config.download}
         </button>
       ) : (
         <button type="button" className="ghost-pill" disabled={checking} onClick={onCheck}>
@@ -116,14 +123,14 @@ function UpdateRow({
             : state === "up-to-date"
               ? <CheckCircle2 size={13} />
               : <RefreshCw size={13} />}
-          检查更新
+          {m.config.checkUpdate}
         </button>
       )}
     </div>
   );
 }
 
-/** 设置页：启动与后台开关、主题选择、软件更新和密钥安全说明。 */
+/** 设置页：启动与后台开关、语言、主题选择、软件更新和密钥安全说明。 */
 export function SettingsView({
   settings,
   busy,
@@ -134,37 +141,38 @@ export function SettingsView({
   onDownloadUpdate,
   onInstallUpdate,
 }: SettingsViewProps): ReactElement {
+  const { m } = useI18n();
   return (
-    <main className="page-scroll" aria-label="设置">
+    <main className="page-scroll" aria-label={m.config.title}>
       <div className="page-inner narrow">
         <div className="section-head rise">
-          <h1>Config</h1>
+          <h1>{m.config.title}</h1>
         </div>
         <div className="settings-card rise-1">
           <SettingToggle
-            title="开机自启（静默）"
-            description="登录 Windows 后自动启动并直接驻留托盘，不弹出窗口；手动启动仍正常显示"
+            title={m.config.launchAtLogin}
+            description={m.config.launchAtLoginDesc}
             checked={settings.launchAtLogin}
             disabled={busy}
             onChange={(launchAtLogin) => onChange({ launchAtLogin })}
           />
           <SettingToggle
-            title="关闭时驻留托盘"
-            description="网关运行时保持后台驻留，关闭网关后按此设置退出"
+            title={m.config.closeToTray}
+            description={m.config.closeToTrayDesc}
             checked={settings.closeToTray}
             disabled={busy}
             onChange={(closeToTray) => onChange({ closeToTray })}
           />
           <SettingToggle
-            title="启动时恢复网关"
-            description="启动后恢复上次的网关开关状态"
+            title={m.config.startGateway}
+            description={m.config.startGatewayDesc}
             checked={settings.startGatewayOnLaunch}
             disabled={busy}
             onChange={(startGatewayOnLaunch) => onChange({ startGatewayOnLaunch })}
           />
           <SettingToggle
-            title="Codex 工具兼容模式（实验性）"
-            description="只转换 Responses 的 exec 工具协议，不能修复上游裁剪上下文"
+            title={m.config.toolBridge}
+            description={m.config.toolBridgeDesc}
             checked={settings.experimentalToolBridge}
             disabled={busy}
             onChange={(experimentalToolBridge) => onChange({ experimentalToolBridge })}
@@ -178,10 +186,31 @@ export function SettingsView({
           />
           <div className="settings-theme-row" style={{ borderTop: "1px solid var(--line)" }}>
             <span className="settings-row-copy">
-              <strong>Attractor Field</strong>
-              <small>α 纸与墨 · β 分歧率显示器 · 立即生效</small>
+              <strong>{m.config.language}</strong>
+              <small>{m.config.languageDesc}</small>
             </span>
-            <div className="theme-segments" role="radiogroup" aria-label="界面主题">
+            <div className="theme-segments" role="radiogroup" aria-label={m.config.language}>
+              {LANGUAGES.map((language) => (
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={settings.language === language}
+                  className={settings.language === language ? "active" : ""}
+                  disabled={busy}
+                  key={language}
+                  onClick={() => onChange({ language })}
+                >
+                  {language === "system" ? m.config.system : LOCALE_LABELS[language]}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="settings-theme-row">
+            <span className="settings-row-copy">
+              <strong>{m.config.attractorField}</strong>
+              <small>{m.config.attractorFieldDesc}</small>
+            </span>
+            <div className="theme-segments" role="radiogroup" aria-label={m.config.attractorField}>
               {THEMES.map((theme) => (
                 <button
                   type="button"
@@ -192,7 +221,7 @@ export function SettingsView({
                   key={theme.value}
                   onClick={() => onChange({ theme: theme.value })}
                 >
-                  {theme.icon}{theme.label}
+                  {theme.icon}{theme.label(m)}
                 </button>
               ))}
             </div>
@@ -200,10 +229,7 @@ export function SettingsView({
         </div>
         <p className="security-note rise-2">
           <ShieldCheck size={14} />
-          <span>
-            真实 Key 由 Windows DPAPI 加密，只在本机交给网关；客户端不会保存上游 Key。
-            方案中的 URL 与 Key 永不写入客户端配置文件。
-          </span>
+          <span>{m.config.security}</span>
         </p>
       </div>
     </main>

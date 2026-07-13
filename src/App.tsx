@@ -1,5 +1,5 @@
 import { Activity, KeyRound, LayoutDashboard, Minus, Settings, ShieldCheck, Square, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, ReactElement } from "react";
 import { ActivityView } from "./components/ActivityView";
 import { ConfirmDialog } from "./components/ConfirmDialog";
@@ -11,6 +11,8 @@ import { SettingsView } from "./components/SettingsView";
 import { Toast } from "./components/Toast";
 import { APP_VERSION, DEFAULT_SETTINGS } from "./config";
 import { useAgentGateController } from "./hooks/useAgentGateController";
+import { I18nProvider, useI18n } from "./i18n";
+import type { Messages } from "./i18n";
 import { api, isDesktop } from "./lib/api";
 import type { Profile, SaveProfileInput } from "./types";
 import type { View } from "./ui-types";
@@ -20,12 +22,24 @@ interface EditorState {
   profile?: Profile;
 }
 
-const NAV_ITEMS: Array<{ view: View; label: string; icon: ReactElement }> = [
-  { view: "overview", label: "OVERVIEW", icon: <LayoutDashboard size={13} /> },
-  { view: "keyring", label: "KEYS", icon: <KeyRound size={13} /> },
-  { view: "activity", label: "STREAM", icon: <Activity size={13} /> },
-  { view: "settings", label: "CONFIG", icon: <Settings size={13} /> },
-];
+const NAV_ICONS: Record<View, ReactElement> = {
+  overview: <LayoutDashboard size={13} />,
+  keyring: <KeyRound size={13} />,
+  activity: <Activity size={13} />,
+  settings: <Settings size={13} />,
+};
+
+const NAV_LABEL: Record<View, (m: Messages) => string> = {
+  overview: (m) => m.nav.overview,
+  keyring: (m) => m.nav.keys,
+  activity: (m) => m.nav.stream,
+  settings: (m) => m.nav.config,
+};
+
+const NAV_ORDER: View[] = ["overview", "keyring", "activity", "settings"];
+
+/** 与 CSS 里 .theme-shifting 的过渡时长保持一致。 */
+const THEME_SHIFT_MS = 460;
 
 function isContextMenuTargetInteractive(target: EventTarget | null): boolean {
   return target instanceof Element && Boolean(target.closest(
@@ -33,8 +47,19 @@ function isContextMenuTargetInteractive(target: EventTarget | null): boolean {
   ));
 }
 
+/** 外层只负责把语言设置注入 I18nProvider，界面本体在 AppShell 里。 */
 function App(): ReactElement {
   const controller = useAgentGateController();
+  const language = (controller.data.settings ?? DEFAULT_SETTINGS).language;
+  return (
+    <I18nProvider locale={language}>
+      <AppShell controller={controller} />
+    </I18nProvider>
+  );
+}
+
+function AppShell({ controller }: { controller: ReturnType<typeof useAgentGateController> }): ReactElement {
+  const { locale, m, fill } = useI18n();
   const [view, setView] = useState<View>("overview");
   const [editor, setEditor] = useState<EditorState>({ open: false });
   const [pendingDelete, setPendingDelete] = useState<Profile>();
@@ -50,10 +75,27 @@ function App(): ReactElement {
     .filter((route) => controller.data.profiles.some((profile) => profile.id === route.profileId))
     .length;
 
+  // 世界线跃迁：换主题时临时挂上 .theme-shifting，让所有颜色过渡而不是硬切。
+  // 首次挂载不算「切换」，否则打开应用就会看到一次莫名的渐变。
+  const themeMounted = useRef(false);
   useEffect(() => {
-    if (settings.theme === "system") document.documentElement.removeAttribute("data-theme");
-    else document.documentElement.dataset.theme = settings.theme;
+    const root = document.documentElement;
+    if (settings.theme === "system") root.removeAttribute("data-theme");
+    else root.dataset.theme = settings.theme;
+
+    if (!themeMounted.current) {
+      themeMounted.current = true;
+      return undefined;
+    }
+    root.classList.add("theme-shifting");
+    const timer = window.setTimeout(() => root.classList.remove("theme-shifting"), THEME_SHIFT_MS);
+    return () => window.clearTimeout(timer);
   }, [settings.theme]);
+
+  // 日文的字形与中文不同，行首禁则也各有一套，交给 CSS 按 lang 去挑。
+  useEffect(() => {
+    document.documentElement.lang = locale;
+  }, [locale]);
 
   useEffect(() => {
     function goBack(): void {
@@ -121,15 +163,16 @@ function App(): ReactElement {
     setView("activity");
   }
 
+  const address = `127.0.0.1:${gateway.port}`;
   const statusText = gateway.status === "starting"
-    ? `GATEWAY STARTING · 127.0.0.1:${gateway.port}`
+    ? `${m.overview.heroStarting} · ${address}`
     : gateway.status === "stopping"
-      ? `GATEWAY STOPPING · 127.0.0.1:${gateway.port}`
+      ? `${m.overview.heroStopping} · ${address}`
       : gateway.status === "error"
-        ? `GATEWAY FAULT${gateway.error ? ` · ${gateway.error}` : ""}`
+        ? `${m.overview.heroFault}${gateway.error ? ` · ${gateway.error}` : ""}`
         : gatewayOn
-          ? `GATEWAY ONLINE · ${routeCount} ROUTES · 127.0.0.1:${gateway.port}`
-          : `GATEWAY OFFLINE · 127.0.0.1:${gateway.port}`;
+          ? `${m.gateway.online} · ${routeCount} ROUTES · ${address}`
+          : `${m.gateway.offline} · ${address}`;
   const statusDot = gateway.status === "error"
     ? "var(--bad)"
     : gateway.status === "running"
@@ -143,18 +186,18 @@ function App(): ReactElement {
           <strong>Agent;<span className="brand-g">G</span>ate</strong>
           <span className="brand-rule" aria-hidden="true" />
         </div>
-        <nav className="top-nav" aria-label="功能导航">
-          {NAV_ITEMS.map((item) => (
+        <nav className="top-nav" aria-label={m.nav.overview}>
+          {NAV_ORDER.map((item) => (
             <button
               type="button"
-              key={item.view}
-              className={view === item.view ? "active" : ""}
-              aria-current={view === item.view ? "page" : undefined}
-              onClick={() => setView(item.view)}
+              key={item}
+              className={view === item ? "active" : ""}
+              aria-current={view === item ? "page" : undefined}
+              onClick={() => setView(item)}
             >
-              {item.icon}
-              {item.label}
-              {item.view === "activity" && activeRequests.length > 0 && (
+              {NAV_ICONS[item]}
+              <span key={locale} className="swap-text">{NAV_LABEL[item](m)}</span>
+              {item === "activity" && activeRequests.length > 0 && (
                 <em>{activeRequests.length}</em>
               )}
               <i aria-hidden="true" />
@@ -173,16 +216,16 @@ function App(): ReactElement {
             <div className="win-controls">
               <button
                 type="button"
-                title="最小化"
-                aria-label="最小化"
+                title={m.window.minimize}
+                aria-label={m.window.minimize}
                 onClick={() => void api.windowControl?.("minimize")}
               >
                 <Minus size={14} />
               </button>
               <button
                 type="button"
-                title="最大化 / 还原"
-                aria-label="最大化或还原"
+                title={m.window.maximize}
+                aria-label={m.window.maximize}
                 onClick={() => void api.windowControl?.("maximize")}
               >
                 <Square size={12} />
@@ -190,8 +233,8 @@ function App(): ReactElement {
               <button
                 type="button"
                 className="win-close"
-                title="关闭"
-                aria-label="关闭窗口"
+                title={m.window.close}
+                aria-label={m.window.close}
                 onClick={() => void api.windowControl?.("close")}
               >
                 <X size={15} />
@@ -203,6 +246,7 @@ function App(): ReactElement {
 
       {view === "overview" && (
         <OverviewView
+          key={locale}
           profiles={controller.data.profiles}
           clients={controller.data.clients}
           gateway={gateway}
@@ -215,6 +259,7 @@ function App(): ReactElement {
       )}
       {view === "keyring" && (
         <KeyringView
+          key={locale}
           profiles={controller.data.profiles}
           gateway={gateway}
           busy={controller.busy}
@@ -236,9 +281,10 @@ function App(): ReactElement {
           onRetry={() => void controller.refresh()}
         />
       )}
-      {view === "activity" && <ActivityView requests={requestRecords} />}
+      {view === "activity" && <ActivityView key={locale} requests={requestRecords} />}
       {view === "settings" && (
         <SettingsView
+          key={locale}
           settings={settings}
           busy={controller.busy === "settings"}
           update={controller.data.update}
@@ -252,10 +298,10 @@ function App(): ReactElement {
 
       <footer className="status-footer" aria-live="polite">
         <span><i className="status-dot" style={{ background: statusDot }} />{statusText}</span>
-        <span><ShieldCheck size={12} />DPAPI SEALED</span>
+        <span><ShieldCheck size={12} />{m.footer.sealed}</span>
         <span className="footer-right">
-          {controller.data.profiles.length} PROFILES / 4 CLIENTS · Agent;Gate {APP_VERSION}
-          {!isDesktop && " · PREVIEW"}
+          {controller.data.profiles.length} {m.footer.profiles} / 4 {m.footer.clients} · Agent;Gate {APP_VERSION}
+          {!isDesktop && ` · ${m.footer.preview}`}
         </span>
       </footer>
 
@@ -274,9 +320,10 @@ function App(): ReactElement {
 
       {pendingDelete && (
         <ConfirmDialog
-          title={`删除“${pendingDelete.name}”？`}
-          message="指向它的路由也会一并移除。此操作不修改已写入客户端的配置。"
-          confirmLabel="删除"
+          title={fill(m.confirm.deleteTitle, { name: pendingDelete.name })}
+          message={m.confirm.deleteMessage}
+          confirmLabel={m.confirm.deleteConfirm}
+          cancelLabel={m.confirm.cancel}
           danger
           onConfirm={() => void confirmDelete()}
           onCancel={() => setPendingDelete(undefined)}

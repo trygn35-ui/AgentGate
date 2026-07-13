@@ -1,4 +1,6 @@
+import { useEffect, useRef, useState } from "react";
 import type { ReactElement } from "react";
+import { useI18n } from "../i18n";
 import type { DivergenceTier } from "../lib/divergence";
 
 interface NixieTubesProps {
@@ -16,6 +18,39 @@ const TIER_CLASS: Record<DivergenceTier, string> = {
   critical: "bad",
 };
 
+/** 与 CSS 的 tube-roll 动画时长保持一致。 */
+const ROLL_MS = 340;
+
+/**
+ * 单管：数字变化时旧字符向上滚出、新字符从下方滚入，并伴一次点火辉光。
+ *
+ * 保留旧字符是为了让两者在同一管内交错——纯 CSS 做不到，React 卸载旧节点太快。
+ */
+function Tube({ char, blank }: { char: string; blank: boolean }): ReactElement {
+  const isDot = char === ".";
+  const [previous, setPrevious] = useState<string>();
+  const last = useRef(char);
+
+  useEffect(() => {
+    if (last.current === char) return undefined;
+    setPrevious(last.current);
+    last.current = char;
+    const timer = window.setTimeout(() => setPrevious(undefined), ROLL_MS);
+    return () => window.clearTimeout(timer);
+  }, [char]);
+
+  const className = ["tube", isDot ? "dot" : "", blank ? "blank" : ""].filter(Boolean).join(" ");
+
+  return (
+    <span className={className} aria-hidden="true" data-ghost={isDot ? "." : "8"}>
+      {previous !== undefined && (
+        <b key={`out-${previous}`} className="tube-glyph out">{previous}</b>
+      )}
+      <b key={`in-${char}`} className="tube-glyph in">{char}</b>
+    </span>
+  );
+}
+
 /**
  * 辉光管数字阵列（Divergence Meter）。
  *
@@ -32,6 +67,7 @@ export function NixieTubes({
   tier = "nominal",
   label,
 }: NixieTubesProps): ReactElement {
+  const { m } = useI18n();
   const chars = value ? [...value] : Array.from({ length: blankLength }, () => "0");
   const blank = !value;
 
@@ -39,26 +75,11 @@ export function NixieTubes({
     <div
       className={`tubes ${TIER_CLASS[tier]}`}
       role="img"
-      aria-label={label ?? (value ? `读数 ${value}` : "无数据")}
+      aria-label={label ?? (value ?? m.keys.awaitingSamples)}
     >
-      {chars.map((char, index) => {
-        const isDot = char === ".";
-        const className = [
-          "tube",
-          isDot ? "dot" : "",
-          blank ? "blank" : "",
-        ].filter(Boolean).join(" ");
-        return (
-          <span
-            key={index}
-            className={className}
-            aria-hidden="true"
-            data-ghost={isDot ? "." : "8"}
-          >
-            {char}
-          </span>
-        );
-      })}
+      {chars.map((char, index) => (
+        <Tube key={index} char={char} blank={blank} />
+      ))}
     </div>
   );
 }

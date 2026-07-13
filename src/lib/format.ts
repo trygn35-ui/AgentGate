@@ -1,30 +1,37 @@
 /**
  * 将 ISO 时间转换为适合状态栏展示的相对时间。
  *
+ * 交给 Intl.RelativeTimeFormat 处理复数与语序——中文「3 分钟前」、日文
+ * 「3 分前」、英文「3 minutes ago」的规则各不相同，不该由我们手写。
+ *
  * @param value ISO 时间；缺失时表示从未发生。
- * @returns 中文相对时间文本。
+ * @param locale 界面语言。
+ * @param neverLabel 缺失时展示的文本。
+ * @returns 本地化的相对时间文本。
  */
-export function relativeTime(value?: string): string {
-  if (!value) return "从未";
+export function relativeTime(value: string | undefined, locale: string, neverLabel: string): string {
+  if (!value) return neverLabel;
 
+  const format = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
   const delta = Date.now() - new Date(value).getTime();
   const minutes = Math.max(0, Math.floor(delta / 60_000));
-  if (minutes < 1) return "刚刚";
-  if (minutes < 60) return `${minutes} 分钟前`;
+  if (minutes < 1) return format.format(0, "minute");
+  if (minutes < 60) return format.format(-minutes, "minute");
 
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} 小时前`;
-  return `${Math.floor(hours / 24)} 天前`;
+  if (hours < 24) return format.format(-hours, "hour");
+  return format.format(-Math.floor(hours / 24), "day");
 }
 
 /**
  * 将 ISO 时间格式化为本地月日和时分，供历史记录使用。
  *
  * @param value 有效的 ISO 时间。
+ * @param locale 界面语言。
  * @returns 本地化后的日期时间文本。
  */
-export function formatDateTime(value: string): string {
-  return new Intl.DateTimeFormat("zh-CN", {
+export function formatDateTime(value: string, locale: string): string {
+  return new Intl.DateTimeFormat(locale, {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",

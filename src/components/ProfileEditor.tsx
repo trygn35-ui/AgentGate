@@ -21,6 +21,8 @@ import {
   CLIENT_TARGET_ORDER,
   PROTOCOL_META,
 } from "../config";
+import { useI18n } from "../i18n";
+import type { Messages } from "../i18n";
 import { normalizeHttpUrl } from "../lib/url";
 import type {
   ClientTarget,
@@ -41,6 +43,20 @@ interface ProfileEditorProps {
   onClose: () => void;
   onSave: (input: SaveProfileInput, applyAfter: boolean) => Promise<void>;
 }
+
+/** 校验结果用错误码表示——文案是翻译的，定位逻辑不能依赖文案。 */
+type ValidationCode = keyof Messages["errors"];
+
+/** 出错时把焦点送回哪个字段；用 data-field 定位，不受语言影响。 */
+const ERROR_FIELD: Partial<Record<ValidationCode, string>> = {
+  nameRequired: "name",
+  urlInvalid: "url",
+  urlCredentials: "url",
+  urlDuplicate: "url",
+  urlActiveRequired: "url",
+  urlAtLeastOne: "url",
+  keyRequired: "key",
+};
 
 function createEditorInput(profile?: Profile): SaveProfileInput {
   if (!profile) {
@@ -66,46 +82,36 @@ function createEditorInput(profile?: Profile): SaveProfileInput {
 }
 
 /**
- * 在进入主进程前校验表单边界，提供面向用户的即时错误。
+ * 在进入主进程前校验表单边界。
  *
  * @param form 当前表单值。
  * @param hasExistingKey 是否允许空 Key 表示保留原密文。
- * @returns 首个校验错误；通过时返回 undefined。
+ * @returns 首个校验错误码；通过时返回 undefined。
  */
-function validateProfileInput(form: SaveProfileInput, hasExistingKey: boolean): string | undefined {
-  if (!form.name.trim()) return "请输入方案名称";
+function validateProfileInput(
+  form: SaveProfileInput,
+  hasExistingKey: boolean,
+): ValidationCode | undefined {
+  if (!form.name.trim()) return "nameRequired";
 
-  if (form.endpoints.length === 0) return "至少保留一个 API URL";
+  if (form.endpoints.length === 0) return "urlAtLeastOne";
   const normalizedUrls: string[] = [];
   for (const endpoint of form.endpoints) {
     try {
       const value = endpoint.url.trim();
       const parsed = new URL(value);
-      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-        return "请输入有效的 HTTP(S) API URL";
-      }
-      if (parsed.username || parsed.password || parsed.hash) {
-        return "API URL 不能包含凭据或片段";
-      }
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return "urlInvalid";
+      if (parsed.username || parsed.password || parsed.hash) return "urlCredentials";
       normalizedUrls.push(normalizeHttpUrl(value));
     } catch {
-      return "请输入有效的 HTTP(S) API URL";
+      return "urlInvalid";
     }
   }
-  if (new Set(normalizedUrls).size !== normalizedUrls.length) return "API URL 不能重复";
-  if (!form.endpoints.some((endpoint) => endpoint.url === form.baseUrl)) {
-    return "请选择一个活动 URL";
-  }
+  if (new Set(normalizedUrls).size !== normalizedUrls.length) return "urlDuplicate";
+  if (!form.endpoints.some((endpoint) => endpoint.url === form.baseUrl)) return "urlActiveRequired";
 
-  if (!hasExistingKey && !form.apiKey?.trim()) return "请输入 API Key";
-  if (form.targets.length === 0) return "至少选择一个适用客户端";
-  return undefined;
-}
-
-function invalidFieldLabel(error: string): string | undefined {
-  if (error.includes("方案名称")) return "方案名称";
-  if (error.includes("API URL") || error.includes("活动 URL")) return "API URL 1";
-  if (error.includes("API Key")) return "API Key";
+  if (!hasExistingKey && !form.apiKey?.trim()) return "keyRequired";
+  if (form.targets.length === 0) return "targetRequired";
   return undefined;
 }
 
@@ -130,11 +136,14 @@ function normalizeProfileInput(form: SaveProfileInput): SaveProfileInput {
   };
 }
 
-function endpointStatus(endpoint?: ProfileEndpoint): { text: string; className: string } {
+function endpointStatus(
+  endpoint: ProfileEndpoint | undefined,
+  m: Messages,
+): { text: string; className: string } {
   if (!endpoint?.health || endpoint.health.status === "unknown") {
-    return { text: "未检测", className: "unknown" };
+    return { text: m.editor.notDetected, className: "unknown" };
   }
-  if (endpoint.health.status === "unhealthy") return { text: "不可用", className: "bad" };
+  if (endpoint.health.status === "unhealthy") return { text: m.editor.unavailable, className: "bad" };
   return { text: `${endpoint.health.latencyMs ?? 0} ms`, className: "good" };
 }
 
@@ -155,10 +164,11 @@ export function ProfileEditor({
   onClose,
   onSave,
 }: ProfileEditorProps): ReactElement {
+  const { m, fill } = useI18n();
   const initialForm = useRef(createEditorInput(profile));
   const [form, setForm] = useState<SaveProfileInput>(() => initialForm.current);
   const [showKey, setShowKey] = useState(false);
-  const [error, setError] = useState<string>();
+  const [error, setError] = useState<ValidationCode>();
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [models, setModels] = useState<string[]>(() => profile?.availableModels ?? []);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
@@ -311,17 +321,15 @@ export function ProfileEditor({
 
   async function submit(event: SyntheticEvent, applyAfter: boolean): Promise<void> {
     event.preventDefault();
-    const validationError = validateProfileInput(form, Boolean(profile));
-    if (validationError) {
-      setError(validationError);
-      const fieldLabel = invalidFieldLabel(validationError);
-      if (fieldLabel) {
+    const code = validateProfileInput(form, Boolean(profile));
+    if (code) {
+      setError(code);
+      const field = ERROR_FIELD[code];
+      if (field) {
         requestAnimationFrame(() => {
-          const field = dialogRef.current?.querySelector<HTMLElement>(
-            `[aria-label="${fieldLabel}"]`,
-          );
-          field?.focus();
-          field?.scrollIntoView({ block: "center", behavior: "smooth" });
+          const input = dialogRef.current?.querySelector<HTMLElement>(`[data-field="${field}"]`);
+          input?.focus();
+          input?.scrollIntoView({ block: "center", behavior: "smooth" });
         });
       }
       return;
@@ -341,12 +349,14 @@ export function ProfileEditor({
     requestClose();
   }
 
+  const title = profile ? fill(m.editor.editTitle, { name: profile.name }) : m.editor.createTitle;
+
   return (
     <div
       className="editor-layer"
       role="dialog"
       aria-modal="true"
-      aria-label={profile ? "编辑方案" : "新建方案"}
+      aria-label={title}
       onKeyDown={(event) => {
         if (event.key !== "Escape" || confirmDiscard) return;
         event.preventDefault();
@@ -364,7 +374,7 @@ export function ProfileEditor({
       <button
         type="button"
         className="editor-scrim"
-        aria-label="关闭"
+        aria-label={m.editor.close}
         disabled={busy}
         onClick={requestClose}
       />
@@ -374,12 +384,12 @@ export function ProfileEditor({
         onSubmit={(event) => void submit(event, false)}
       >
         <header className="editor-head">
-          <h2>{profile ? `编辑 · ${profile.name}` : "新建连接方案"}</h2>
+          <h2>{title}</h2>
           <button
             type="button"
             className="editor-close"
-            aria-label="关闭"
-            title="关闭"
+            aria-label={m.editor.close}
+            title={m.editor.close}
             disabled={busy}
             onClick={requestClose}
           >
@@ -391,25 +401,26 @@ export function ProfileEditor({
           {error && (
             <div className="editor-error" role="alert">
               <AlertCircle size={14} />
-              <span>{error}</span>
+              <span>{m.errors[error]}</span>
             </div>
           )}
 
           <div className="field-grid">
             <label className="field-block">
-              <span className="field-name">方案名称</span>
+              <span className="field-name">{m.editor.name}</span>
               <input
-                aria-label="方案名称"
+                data-field="name"
+                aria-label={m.editor.name}
                 value={form.name}
                 onChange={(event) => update("name", event.target.value)}
-                placeholder="例如：主力中转"
+                placeholder={m.editor.namePlaceholder}
                 autoFocus
               />
             </label>
             <label className="field-block">
-              <span className="field-name">API 协议</span>
+              <span className="field-name">{m.editor.protocol}</span>
               <select
-                aria-label="API 协议"
+                aria-label={m.editor.protocol}
                 value={form.protocol}
                 onChange={(event) => changeProtocol(event.target.value as Protocol)}
               >
@@ -424,28 +435,29 @@ export function ProfileEditor({
 
           <div className="editor-section">
             <span className="field-name">
-              API URL
-              <small>圆点标记活动 URL</small>
+              {m.editor.apiUrl}
+              <small>{m.editor.activeUrlHint}</small>
             </span>
-            <div className="url-pool" role="group" aria-label="API URL 列表">
+            <div className="url-pool" role="group" aria-label={m.editor.apiUrl}>
               {form.endpoints.map((endpoint, index) => {
                 const known = profile?.endpoints.find((item) => item.url === endpoint.url);
                 const active = endpoint.url === form.baseUrl;
-                const status = endpointStatus(known);
+                const status = endpointStatus(known, m);
                 return (
                   <div className={`url-row ${active ? "active" : ""}`} key={index}>
                     <button
                       type="button"
                       className="url-radio"
-                      title="设为活动 URL"
-                      aria-label={`设为活动 URL ${index + 1}`}
+                      title={m.editor.setActive}
+                      aria-label={`${m.editor.setActive} ${index + 1}`}
                       aria-pressed={active}
                       onClick={() => updateEndpoints(form.endpoints, endpoint.url)}
                     >
                       {active ? <CheckCircle2 size={15} /> : <Circle size={15} />}
                     </button>
                     <input
-                      aria-label={`API URL ${index + 1}`}
+                      data-field={index === 0 ? "url" : undefined}
+                      aria-label={`${m.editor.apiUrl} ${index + 1}`}
                       value={endpoint.url}
                       onChange={(event) => updateUrl(index, event.target.value)}
                       placeholder="https://api.example.com/v1"
@@ -455,8 +467,8 @@ export function ProfileEditor({
                     <button
                       type="button"
                       className="url-remove"
-                      title="删除 URL"
-                      aria-label={`删除 URL ${index + 1}`}
+                      title={m.editor.removeUrl}
+                      aria-label={`${m.editor.removeUrl} ${index + 1}`}
                       disabled={form.endpoints.length === 1}
                       onClick={() => removeEndpoint(index)}
                     >
@@ -472,14 +484,14 @@ export function ProfileEditor({
                 className="add-url-pill"
                 onClick={() => updateEndpoints([...form.endpoints, { url: "" }], form.baseUrl)}
               >
-                <Plus size={13} />添加 URL
+                <Plus size={13} />{m.editor.addUrl}
               </button>
               <label className="inline-switch">
-                <span className="switch-label">自动择优</span>
+                <span className="switch-label">{m.editor.autoSwitch}</span>
                 <input
                   type="checkbox"
                   className="switch-input"
-                  aria-label="自动选择一小时可用率最高的 URL"
+                  aria-label={m.editor.autoSwitchHint}
                   checked={form.autoSwitch.enabled}
                   onChange={(event) => update("autoSwitch", {
                     ...form.autoSwitch,
@@ -501,25 +513,26 @@ export function ProfileEditor({
             <div className="field-grid">
               <label className="field-block">
                 <span className="field-name">
-                  API Key
-                  {profile && <small>留空保留 {profile.keyHint}</small>}
+                  {m.editor.apiKey}
+                  {profile && <small>{fill(m.editor.keyKeepHint, { hint: profile.keyHint })}</small>}
                 </span>
                 <div className="password-field">
                   <input
-                    aria-label="API Key"
+                    data-field="key"
+                    aria-label={m.editor.apiKey}
                     className="mono"
                     type={showKey ? "text" : "password"}
                     value={form.apiKey}
                     onChange={(event) => update("apiKey", event.target.value)}
-                    placeholder={profile ? "保留现有密钥" : "sk-..."}
+                    placeholder={profile ? m.editor.keyPlaceholder : m.editor.keyPlaceholderNew}
                     autoComplete="off"
                     spellCheck={false}
                   />
                   <button
                     type="button"
                     className="icon-mini"
-                    title={showKey ? "隐藏密钥" : "显示密钥"}
-                    aria-label={showKey ? "隐藏密钥" : "显示密钥"}
+                    title={showKey ? m.editor.hideKey : m.editor.showKey}
+                    aria-label={showKey ? m.editor.hideKey : m.editor.showKey}
                     onClick={() => setShowKey((value) => !value)}
                   >
                     {showKey ? <EyeOff size={13} /> : <Eye size={13} />}
@@ -528,23 +541,22 @@ export function ProfileEditor({
               </label>
               <div className="field-block">
                 <span className="field-name">
-                  模型 ID
+                  {m.editor.model}
                   <button
                     type="button"
                     className="link-button"
-                    title="用当前 Key 请求上游模型列表"
                     disabled={busy || discovering}
                     onClick={() => void discoverModels()}
                   >
                     {discovering
                       ? <LoaderCircle size={11} className="spin" />
                       : <RefreshCw size={11} />}
-                    识别模型
+                    {m.editor.discoverModels}
                   </button>
                 </span>
                 <div className="model-field" ref={modelFieldRef}>
                   <input
-                    aria-label="模型 ID"
+                    aria-label={m.editor.model}
                     className="mono"
                     role="combobox"
                     aria-expanded={modelMenuOpen}
@@ -573,8 +585,10 @@ export function ProfileEditor({
                   <button
                     type="button"
                     className="model-toggle"
-                    aria-label={modelMenuOpen ? "收起模型列表" : "展开模型列表"}
-                    title={models.length > 0 ? `${models.length} 个可用模型` : "先点击识别模型"}
+                    aria-label={m.editor.model}
+                    title={models.length > 0
+                      ? fill(m.editor.modelsAvailable, { count: models.length })
+                      : m.editor.discoverModels}
                     onClick={() => {
                       setModelQuery(undefined);
                       setModelMenuOpen((open) => !open);
@@ -583,7 +597,7 @@ export function ProfileEditor({
                     <ChevronsUpDown size={13} />
                   </button>
                   {modelMenuOpen && (
-                    <div className="model-menu" role="listbox" aria-label="可用模型">
+                    <div className="model-menu" role="listbox" aria-label={m.editor.model}>
                       {modelOptions.length > 0 ? modelOptions.map((model) => (
                         <button
                           type="button"
@@ -602,9 +616,7 @@ export function ProfileEditor({
                         </button>
                       )) : (
                         <p className="model-menu-empty">
-                          {models.length === 0
-                            ? "还没有识别到模型，点击上方“识别模型”。"
-                            : "没有匹配的模型，点右侧箭头查看全部。"}
+                          {models.length === 0 ? m.editor.modelEmpty : m.editor.modelNoMatch}
                         </p>
                       )}
                     </div>
@@ -614,8 +626,8 @@ export function ProfileEditor({
             </div>
             {form.protocol === "anthropic" && (
               <div className="field-block" style={{ marginTop: 12 }}>
-                <span className="field-name">认证方式</span>
-                <div className="auth-segments" role="radiogroup" aria-label="认证方式">
+                <span className="field-name">{m.editor.authMode}</span>
+                <div className="auth-segments" role="radiogroup" aria-label={m.editor.authMode}>
                   <button
                     type="button"
                     role="radio"
@@ -640,7 +652,7 @@ export function ProfileEditor({
           </div>
 
           <div className="editor-section ruled">
-            <span className="field-name">适用客户端</span>
+            <span className="field-name">{m.editor.targets}</span>
             <div className="target-grid">
               {CLIENT_TARGET_ORDER.map((target) => {
                 const compatible = compatibleTargets.includes(target);
@@ -662,7 +674,7 @@ export function ProfileEditor({
                     <span className="target-check">{checked && <Check size={12} />}</span>
                     <span className="target-copy">
                       <strong>{CLIENT_META[target].label}</strong>
-                      <small>{compatible ? "可由网关转发" : "协议不兼容"}</small>
+                      <small>{compatible ? m.editor.viaGateway : m.editor.incompatible}</small>
                     </span>
                   </label>
                 );
@@ -671,8 +683,8 @@ export function ProfileEditor({
             {form.protocol === "anthropic" && form.targets.includes("claude") && (
               <label className="tool-search-row">
                 <span>
-                  <strong>Claude Tool Search</strong>
-                  <small>为非官方域名写入 ENABLE_TOOL_SEARCH</small>
+                  <strong>{m.editor.toolSearch}</strong>
+                  <small>{m.editor.toolSearchDesc}</small>
                 </span>
                 <input
                   type="checkbox"
@@ -693,11 +705,11 @@ export function ProfileEditor({
 
         <footer className="editor-foot">
           <button type="button" className="btn-ghost" disabled={busy} onClick={requestClose}>
-            取消
+            {m.editor.cancel}
           </button>
           <button type="submit" className="btn-save" disabled={busy}>
             {busy ? <LoaderCircle size={14} className="spin" /> : <Check size={14} />}
-            {busy ? "正在保存" : "保存"}
+            {busy ? m.editor.saving : m.editor.save}
           </button>
           <button
             type="button"
@@ -710,15 +722,16 @@ export function ProfileEditor({
             ) : (
               <Zap size={14} fill="currentColor" />
             )}
-            {busy ? "正在保存" : "保存并使用"}
+            {busy ? m.editor.saving : m.editor.saveAndUse}
           </button>
         </footer>
       </form>
       {confirmDiscard && (
         <ConfirmDialog
-          title="放弃尚未保存的修改？"
-          message="表单中的改动不会写入方案。"
-          confirmLabel="放弃修改"
+          title={m.confirm.discardTitle}
+          message={m.confirm.discardMessage}
+          confirmLabel={m.confirm.discardConfirm}
+          cancelLabel={m.confirm.cancel}
           danger
           onConfirm={() => {
             setConfirmDiscard(false);

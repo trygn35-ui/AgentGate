@@ -69,6 +69,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   closeToTray: true,
   startGatewayOnLaunch: true,
   theme: "system",
+  language: "system",
   experimentalToolBridge: false,
 };
 

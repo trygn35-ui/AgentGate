@@ -2,6 +2,7 @@ const { z } = require('zod')
 const { SerialExecutor } = require('./storage.cjs')
 
 const THEME_VALUES = ['system', 'light', 'dark']
+const LANGUAGE_VALUES = ['system', 'zh', 'ja', 'en']
 const SILENT_LAUNCH_FLAG = '--silent'
 
 const SettingsSchema = z.object({
@@ -10,6 +11,8 @@ const SettingsSchema = z.object({
   closeToTray: z.boolean(),
   startGatewayOnLaunch: z.boolean(),
   theme: z.enum(THEME_VALUES),
+  // 老版本写下的 settings.json 没有这个字段，缺省值让它继续可读。
+  language: z.enum(LANGUAGE_VALUES).default('system'),
   experimentalToolBridge: z.boolean(),
 })
 
@@ -22,6 +25,7 @@ function defaultSettings() {
     closeToTray: true,
     startGatewayOnLaunch: true,
     theme: 'system',
+    language: 'system',
     experimentalToolBridge: false,
   }
 }
@@ -97,6 +101,7 @@ class SettingsService {
 
 module.exports = {
   SILENT_LAUNCH_FLAG,
+  LANGUAGE_VALUES,
   SettingsSchema,
   SettingsPatchSchema,
   defaultSettings,

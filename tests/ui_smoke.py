@@ -1,4 +1,4 @@
-"""在隔离浏览器预览中验证 Key Core 主要页面、返回交互与紧凑布局。"""
+"""在隔离浏览器预览中验证 Agent;Gate 主要页面、三语切换、返回交互与紧凑布局。"""
 
 import json
 import sys
@@ -9,12 +9,19 @@ from playwright.sync_api import ConsoleMessage, sync_playwright
 
 OUTPUT_DIR = Path(__file__).resolve().parents[1] / "output" / "playwright"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+URL = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:5173"
 console_errors: list[str] = []
 
 
 def record_console_error(message: ConsoleMessage) -> None:
     if message.type == "error":
         console_errors.append(message.text)
+
+
+def select_language(page, label: str) -> None:
+    """在设置页选择界面语言；界面默认跟随系统，断言前必须固定语言。"""
+    page.get_by_role("radio", name=label, exact=True).click()
+    page.wait_for_timeout(400)
 
 
 def assert_layout(page, width: int, height: int, name: str) -> dict:
@@ -52,9 +59,30 @@ with sync_playwright() as playwright:
     )
     page = browser.new_page(viewport={"width": 1280, "height": 800}, device_scale_factor=1)
     page.on("console", record_console_error)
-    page.goto("http://127.0.0.1:5173", wait_until="networkidle")
+    page.goto(URL, wait_until="networkidle")
+    page.locator(".hero h1").wait_for()
+
+    # 三语切换：每种语言下导航栏都必须有文字，且 <html lang> 同步
+    page.get_by_role("button", name="设置", exact=True).click()
+    languages = {}
+    for label, expected_lang, nav_first in (
+        ("日本語", "ja", "概要"),
+        ("English", "en", "OVERVIEW"),
+        ("简体中文", "zh", "概览"),
+    ):
+        select_language(page, label)
+        html_lang = page.evaluate("() => document.documentElement.lang")
+        nav = page.eval_on_selector_all(".top-nav button", "els => els.map(e => e.textContent.trim())")
+        assert html_lang == expected_lang, (label, html_lang)
+        assert nav[0] == nav_first, (label, nav)
+        assert all(nav), (label, nav)
+        languages[expected_lang] = nav
+
+    # 其余断言固定在英文下跑，避免受系统语言影响
+    select_language(page, "English")
 
     # 概览：hero 标题 + 四张客户端卡片
+    page.get_by_role("button", name="OVERVIEW", exact=True).click()
     page.locator(".hero h1").wait_for()
     assert page.locator(".socket-card").count() == 4
     assert page.locator(".meter").count() == 1  # DIVERGENCE METER
@@ -70,7 +98,7 @@ with sync_playwright() as playwright:
 
     # 新建方案弹窗开合
     page.get_by_role("button", name="NEW", exact=True).first.click()
-    page.get_by_role("dialog", name="新建方案").wait_for()
+    page.get_by_role("dialog", name="New connection profile").wait_for()
     page.keyboard.press("Escape")
     page.get_by_role("heading", name="Attractor Fields", exact=True).wait_for()
 
@@ -85,7 +113,7 @@ with sync_playwright() as playwright:
     # 设置
     page.get_by_role("button", name="CONFIG", exact=True).click()
     page.get_by_role("heading", name="Config", exact=True).wait_for()
-    assert page.get_by_text("Codex 工具兼容模式").is_visible()
+    assert page.get_by_text("Codex tool bridge").is_visible()
 
     page.get_by_role("button", name="OVERVIEW", exact=True).click()
     layouts = {
@@ -93,6 +121,9 @@ with sync_playwright() as playwright:
         "compact": assert_layout(page, 1000, 620, "overview-1000x620"),
     }
 
-    sys.stdout.write(json.dumps({"layouts": layouts, "console_errors": console_errors}, ensure_ascii=False) + "\n")
+    sys.stdout.write(json.dumps(
+        {"layouts": layouts, "languages": languages, "console_errors": console_errors},
+        ensure_ascii=False,
+    ) + "\n")
     assert not console_errors
     browser.close()

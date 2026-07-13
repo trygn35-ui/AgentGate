@@ -30,6 +30,7 @@ describe('SettingsService', () => {
       closeToTray: true,
       startGatewayOnLaunch: true,
       theme: 'system',
+      language: 'system',
       experimentalToolBridge: false,
     })
     expect(app.setLoginItemSettings).toHaveBeenCalledWith({
@@ -37,6 +38,28 @@ describe('SettingsService', () => {
       path: 'D:\\Keydeck.exe',
       args: [],
     })
+  })
+
+  it('读取旧版没有 language 字段的配置文件时补上默认值而不是报错', async () => {
+    const legacy = defaultSettings()
+    delete legacy.language
+    const app = { setLoginItemSettings: vi.fn() }
+    const service = new SettingsService({
+      store: memoryStore(legacy),
+      app,
+      executablePath: 'D:\\Keydeck.exe',
+    })
+
+    await expect(service.initialize()).resolves.toMatchObject({ language: 'system' })
+  })
+
+  it('保存界面语言', async () => {
+    const app = { setLoginItemSettings: vi.fn() }
+    const service = new SettingsService({ store: memoryStore(), app, executablePath: 'D:\\Keydeck.exe' })
+    await service.initialize()
+
+    await expect(service.update({ language: 'ja' })).resolves.toMatchObject({ language: 'ja' })
+    await expect(service.update({ language: 'klingon' })).rejects.toThrow()
   })
 
   it('原子保存局部设置并同步 Windows 登录项', async () => {

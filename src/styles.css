@@ -55,6 +55,7 @@
   --tube-bg: #FBF9F4;
   --tube-ghost: rgba(26, 26, 26, .07);
   --tube-glow: none;
+  --tube-ignite: 0 0 6px rgba(255, 145, 0, .45);
 
   --grid: rgba(90, 80, 60, .05);
   --ghost-num: rgba(26, 26, 26, .035);
@@ -110,6 +111,7 @@
   --tube-bg: #0D0D0F;
   --tube-ghost: rgba(255, 145, 0, .06);
   --tube-glow: 0 0 7px rgba(255, 145, 0, .5), 0 0 20px rgba(128, 32, 0, .55);
+  --tube-ignite: 0 0 13px rgba(255, 145, 0, .95), 0 0 30px rgba(128, 32, 0, .8);
 
   --grid: rgba(255, 145, 0, .035);
   --ghost-num: rgba(255, 145, 0, .045);
@@ -150,6 +152,7 @@
     --tube-bg: #0D0D0F;
     --tube-ghost: rgba(255, 145, 0, .06);
     --tube-glow: 0 0 7px rgba(255, 145, 0, .5), 0 0 20px rgba(128, 32, 0, .55);
+    --tube-ignite: 0 0 13px rgba(255, 145, 0, .95), 0 0 30px rgba(128, 32, 0, .8);
     --grid: rgba(255, 145, 0, .035);
     --ghost-num: rgba(255, 145, 0, .045);
     --grain: .03;
@@ -174,6 +177,49 @@
 }
 @keyframes bar-in { from { transform: scaleY(0); } to { transform: scaleY(1); } }
 @keyframes breathe { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+
+/* 辉光管翻转：新字从下滚入，落位时点火过冲一下再稳定 */
+@keyframes tube-in {
+  0% { transform: translateY(78%); opacity: 0; filter: blur(1.2px); }
+  70% { transform: translateY(0); opacity: 1; filter: blur(0); }
+  82% { text-shadow: var(--tube-ignite, var(--tube-glow)); }
+  100% { transform: translateY(0); opacity: 1; filter: blur(0); }
+}
+@keyframes tube-out {
+  from { transform: translateY(0); opacity: 1; filter: blur(0); }
+  to { transform: translateY(-78%); opacity: 0; filter: blur(1.2px); }
+}
+/* 文案切换（语言、网关状态、绑定方案）：轻微上浮 + 去焦，避免硬切 */
+@keyframes text-swap {
+  from { opacity: 0; transform: translateY(3px); filter: blur(1.5px); }
+  to { opacity: 1; transform: translateY(0); filter: blur(0); }
+}
+/* 读数变化：从下方顶入，比文案更利落 */
+@keyframes value-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.swap-text { display: inline-block; animation: text-swap 260ms cubic-bezier(.2, .9, .25, 1) both; }
+.value-swap { animation: value-in 300ms cubic-bezier(.2, .9, .25, 1) both; }
+
+/*
+ * 世界线跃迁：只在切换主题的那一瞬给所有元素挂上颜色过渡。
+ *
+ * 常驻的全局 transition 会污染 hover/focus 的手感，所以由 JS 在换主题时临时
+ * 加上 .theme-shifting，动画跑完就摘掉。
+ */
+html.theme-shifting *,
+html.theme-shifting *::before,
+html.theme-shifting *::after {
+  transition:
+    background-color 420ms ease,
+    color 420ms ease,
+    border-color 420ms ease,
+    box-shadow 420ms ease,
+    text-shadow 420ms ease,
+    fill 420ms ease !important;
+}
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
@@ -561,6 +607,7 @@ code, .num, [data-num] { font-variant-numeric: tabular-nums; }
   position: relative;
   display: grid;
   place-items: center;
+  overflow: hidden;
   width: 19px;
   height: 30px;
   background: var(--tube-bg);
@@ -574,6 +621,20 @@ code, .num, [data-num] { font-variant-numeric: tabular-nums; }
 }
 .tube.dot { width: 9px; }
 .tube.blank { color: transparent; text-shadow: none; }
+
+/* 数字翻转：旧字向上滚出，新字从下方滚入，并在落位时点火一次。
+   两个字形同时存在于管内，所以必须绝对定位叠放。 */
+.tube-glyph {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font: inherit;
+  font-weight: inherit;
+}
+.tube-glyph.in { animation: tube-in 340ms cubic-bezier(.2, .9, .25, 1) both; }
+.tube-glyph.out { animation: tube-out 340ms cubic-bezier(.2, .9, .25, 1) both; }
+.tube.blank .tube-glyph { animation: none; }
 /* 未点亮的阴极——辉光管的头号特征 */
 .tube::before {
   content: attr(data-ghost);
@@ -1258,8 +1319,10 @@ code, .num, [data-num] { font-variant-numeric: tabular-nums; }
   padding: 9px 14px;
 }
 .theme-segments {
+  /* 按选项数量自动排列——主题 3 个、语言 4 个，都必须排成一行 */
   display: grid;
-  grid-template-columns: repeat(3, minmax(76px, 1fr));
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(72px, 1fr);
   gap: 2px;
   padding: 2px;
   background: var(--soft);

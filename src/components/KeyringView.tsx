@@ -17,9 +17,12 @@ import {
 import { useEffect, useState } from "react";
 import type { DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, ReactElement } from "react";
 import { CLIENT_META, PROTOCOL_META } from "../config";
+import { useI18n } from "../i18n";
+import type { Messages } from "../i18n";
 import { cacheRateTier, getEndpointMetrics, getHealthBarTone, LIMITED_LATENCY_MS } from "../lib/health";
 import type { EndpointMetrics } from "../lib/health";
 import { formatTokenCount, relativeTime } from "../lib/format";
+import { useFlipList } from "../lib/useFlipList";
 import type { ClientTarget, GatewayState, Profile, ProfileEndpoint } from "../types";
 import type { BusyAction } from "../ui-types";
 
@@ -31,14 +34,17 @@ const BAR_FILL = {
 
 const MAX_BARS = 24;
 
+/** 并列项分隔符：中日用顿号，英文用逗号。 */
+const LIST_SEPARATOR: Record<string, string> = { zh: "、", ja: "、", en: ", " };
+
 /** 24 小时健康时间线：最近样本映射为红黄绿柱状图。 */
-function HealthBars({ endpoint }: { endpoint?: ProfileEndpoint }): ReactElement {
+function HealthBars({ endpoint, label }: { endpoint?: ProfileEndpoint; label: string }): ReactElement {
   const samples = (endpoint?.healthTimeline?.length
     ? endpoint.healthTimeline
     : endpoint?.healthHistory ?? []).slice(-MAX_BARS);
   if (samples.length === 0) {
     return (
-      <svg className="health-bars" viewBox="0 0 180 40" preserveAspectRatio="none" role="img" aria-label="暂无健康样本">
+      <svg className="health-bars" viewBox="0 0 180 40" preserveAspectRatio="none" role="img" aria-label={label}>
         <path d="M2 38 H178" stroke="var(--line)" strokeWidth="1.5" />
       </svg>
     );
@@ -60,7 +66,7 @@ function HealthBars({ endpoint }: { endpoint?: ProfileEndpoint }): ReactElement 
       viewBox="0 0 180 40"
       preserveAspectRatio="none"
       role="img"
-      aria-label="24 小时健康度"
+      aria-label={label}
     >
       {bars.map((bar) => (
         <rect
@@ -78,11 +84,11 @@ function HealthBars({ endpoint }: { endpoint?: ProfileEndpoint }): ReactElement 
   );
 }
 
-function healthSummary(profile: Profile): { label: string; className: string } {
+function healthSummary(profile: Profile, m: Messages): { label: string; className: string } {
   const status = profile.health?.status ?? "unknown";
   if (status === "healthy") return { label: `${profile.health?.latencyMs ?? 0} ms`, className: "good" };
-  if (status === "limited") return { label: "LIMITED", className: "warn" };
-  if (status === "unhealthy") return { label: "DOWN", className: "bad" };
+  if (status === "limited") return { label: m.keys.limited, className: "warn" };
+  if (status === "unhealthy") return { label: m.keys.down, className: "bad" };
   return { label: "———", className: "unknown" };
 }
 
@@ -104,11 +110,11 @@ function cumulativeCacheRate(profile: Profile): number | undefined {
   return Math.min(1, cached / input);
 }
 
-function endpointLatency(endpoint: ProfileEndpoint): string {
+function endpointLatency(endpoint: ProfileEndpoint, m: Messages): string {
   if (endpoint.health?.status === "healthy" || endpoint.health?.status === "limited") {
     return `${endpoint.health.latencyMs ?? 0} ms`;
   }
-  return endpoint.health ? "DOWN" : "———";
+  return endpoint.health ? m.keys.down : "———";
 }
 
 interface KeyringViewProps {
@@ -161,10 +167,12 @@ export function KeyringView({
   onReorder,
   onRetry,
 }: KeyringViewProps): ReactElement {
+  const { locale, m, fill } = useI18n();
   const [expandedId, setExpandedId] = useState<string>();
   const [dragId, setDragId] = useState<string>();
   const [dragOverId, setDragOverId] = useState<string>();
   const gatewayOn = gateway.status === "running" || gateway.status === "starting";
+  const listRef = useFlipList(profiles.map((profile) => profile.id));
 
   useEffect(() => {
     if (!expandedId) return undefined;
@@ -204,23 +212,23 @@ export function KeyringView({
   }
 
   return (
-    <main className="page-scroll" aria-label="密钥">
+    <main className="page-scroll" aria-label={m.keys.title}>
       <div className="page-inner">
         <div className="section-head rise">
-          <h1>Attractor Fields</h1>
-          <span className="head-note">{profiles.length} PROFILES · DRAG TO REORDER</span>
+          <h1>{m.keys.title}</h1>
+          <span className="head-note">{fill(m.keys.subtitle, { count: profiles.length })}</span>
           <button
             type="button"
             className="ghost-pill"
             style={{ marginLeft: "auto" }}
-            title="并发检测全部方案的端点延迟，期间不影响其他操作"
+            title={m.keys.testEndpoints}
             disabled={profiles.length === 0 || testingIds.size > 0}
             onClick={onTestAll}
           >
             {testingIds.size > 0
               ? <LoaderCircle size={13} className="spin" />
               : <Gauge size={13} />}
-            TEST ALL
+            {m.keys.testAll}
           </button>
           <button
             type="button"
@@ -229,40 +237,40 @@ export function KeyringView({
             disabled={Boolean(busy)}
             onClick={onCreate}
           >
-            <Plus size={13} />NEW
+            <Plus size={13} />{m.keys.create}
           </button>
         </div>
 
         {loading && profiles.length === 0 ? (
           <div className="empty-state">
             <LoaderCircle size={24} className="spin" />
-            <h2>正在读取本地配置</h2>
+            <h2>{m.keys.loading}</h2>
           </div>
         ) : error && profiles.length === 0 ? (
           <div className="empty-state">
             <div className="empty-icon error-icon"><AlertCircle size={22} /></div>
-            <h2>无法读取本地数据</h2>
+            <h2>{m.keys.loadError}</h2>
             <p>{error}</p>
             <button type="button" className="ghost-pill" onClick={onRetry}>
-              <RefreshCw size={13} />重试
+              <RefreshCw size={13} />{m.keys.retry}
             </button>
           </div>
         ) : profiles.length === 0 ? (
           <div className="empty-state">
             <div className="empty-icon"><KeyRound size={22} /></div>
-            <h2>还没有连接方案</h2>
-            <p>录入第一个 API 端点和密钥。</p>
+            <h2>{m.keys.emptyTitle}</h2>
+            <p>{m.keys.emptyHint}</p>
             <button type="button" className="primary-pill" onClick={onCreate}>
-              <Plus size={13} />NEW
+              <Plus size={13} />{m.keys.create}
             </button>
           </div>
         ) : (
-          <div className="keyring-list">
+          <div className="keyring-list" ref={listRef}>
             {profiles.map((profile, index) => {
               const expanded = expandedId === profile.id;
               const inUse = gateway.routes.some((route) => route.profileId === profile.id);
               const tone = PROTOCOL_META[profile.protocol].tone;
-              const summary = healthSummary(profile);
+              const summary = healthSummary(profile, m);
               const activeEndpoint = profile.endpoints
                 .find((endpoint) => endpoint.url === profile.baseUrl) ?? profile.endpoints[0];
               const metrics: EndpointMetrics = activeEndpoint
@@ -281,6 +289,7 @@ export function KeyringView({
                 <article
                   className={rowClass}
                   key={profile.id}
+                  data-flip-id={profile.id}
                   style={{ animationDelay: `${60 + index * 50}ms` }}
                   draggable={!busy}
                   onDragStart={(event) => {
@@ -308,7 +317,7 @@ export function KeyringView({
                     role="button"
                     tabIndex={0}
                     aria-expanded={expanded}
-                    aria-label={`${profile.name} 详情`}
+                    aria-label={fill(m.keys.expand, { name: profile.name })}
                     onClick={() => setExpandedId(expanded ? undefined : profile.id)}
                     onKeyDown={(event) => handleHeadKey(event, profile.id)}
                   >
@@ -319,7 +328,7 @@ export function KeyringView({
                       <span className="keyring-name-line">
                         <strong>{profile.name}</strong>
                         {inUse && (
-                          <small className={`tag-inuse ${gatewayOn ? "pulse" : ""}`}>ACTIVE</small>
+                          <small className={`tag-inuse ${gatewayOn ? "pulse" : ""}`}>{m.keys.active}</small>
                         )}
                       </span>
                       <code className="keyring-meta">
@@ -335,33 +344,42 @@ export function KeyringView({
                         ))}
                       </span>
                     </span>
-                    <span className="keyring-usage" title="该密钥经网关转发累计消耗的 Token">
-                      <code>{formatTokenCount(profile.tokenUsageTotal ?? 0)}</code>
-                      <small>TOKENS</small>
+                    <span className="keyring-usage">
+                      <code key={profile.tokenUsageTotal ?? 0} className="value-swap">
+                        {formatTokenCount(profile.tokenUsageTotal ?? 0)}
+                      </code>
+                      <small>{m.keys.tokens}</small>
                     </span>
-                    <span className="keyring-usage" title="累计缓存命中 Token 占累计输入的比例">
+                    <span className="keyring-usage">
                       <code className={cacheRateTier(cumulativeCacheRate(profile))}>
                         {cumulativeCacheRate(profile) === undefined
                           ? "———"
                           : cumulativeCacheRate(profile)?.toFixed(3)}
                       </code>
-                      <small>CACHE</small>
+                      <small>{m.keys.cache}</small>
                     </span>
-                    <HealthBars endpoint={activeEndpoint} />
+                    <HealthBars endpoint={activeEndpoint} label={m.keys.awaitingSamples} />
                     <span className="keyring-stat">
-                      <strong className={summary.className}>{summary.label}</strong>
+                      <strong key={summary.label} className={`${summary.className} value-swap`}>
+                        {summary.label}
+                      </strong>
                       <small>
                         {metrics.sampleCount > 0
-                          ? `1H ${metrics.availability ?? 0}% · AVG ${metrics.averageLatencyMs === undefined ? "———" : `${metrics.averageLatencyMs}ms`}`
-                          : "AWAITING SAMPLES"}
+                          ? fill(m.keys.statLine, {
+                            availability: metrics.availability ?? 0,
+                            latency: metrics.averageLatencyMs === undefined
+                              ? "———"
+                              : `${metrics.averageLatencyMs}ms`,
+                          })
+                          : m.keys.awaitingSamples}
                       </small>
                     </span>
                     <span className="keyring-tools">
                       <button
                         type="button"
                         className="icon-ghost"
-                        title={inUse ? "已在使用中，点击重新分配全部适用客户端" : "切换到此方案（全部适用客户端）"}
-                        aria-label={`切换到 ${profile.name}`}
+                        title={inUse ? m.keys.inUseHint : fill(m.keys.switchTo, { name: profile.name })}
+                        aria-label={fill(m.keys.switchTo, { name: profile.name })}
                         disabled={Boolean(busy)}
                         onClick={(event) => {
                           event.stopPropagation();
@@ -375,8 +393,8 @@ export function KeyringView({
                       <button
                         type="button"
                         className="icon-ghost"
-                        title="检测端点延迟（不影响其他操作）"
-                        aria-label={`检测 ${profile.name} 端点`}
+                        title={m.keys.testEndpoints}
+                        aria-label={m.keys.testEndpoints}
                         disabled={testing}
                         onClick={(event) => {
                           event.stopPropagation();
@@ -388,8 +406,8 @@ export function KeyringView({
                       <button
                         type="button"
                         className="icon-ghost"
-                        title="实测：发送一条最小消息，测真实可用性与时延"
-                        aria-label={`实测 ${profile.name}`}
+                        title={m.keys.probeHint}
+                        aria-label={`${m.keys.probe} ${profile.name}`}
                         disabled={Boolean(busy)}
                         onClick={(event) => {
                           event.stopPropagation();
@@ -414,8 +432,8 @@ export function KeyringView({
                               >
                                 <i className={endpointDot(endpoint)} />
                                 <code>{endpoint.url}</code>
-                                <small>{endpointLatency(endpoint)}</small>
-                                <small>{endpoint.models.length} 模型</small>
+                                <small>{endpointLatency(endpoint, m)}</small>
+                                <small>{endpoint.models.length} {m.keys.models}</small>
                               </div>
                             ))}
                           </div>
@@ -429,14 +447,14 @@ export function KeyringView({
                         </div>
                         <div className="assign-col">
                           <dl className="keyring-facts" style={{ margin: 0 }}>
-                            <dt>密钥</dt>
+                            <dt>{m.keys.key}</dt>
                             <dd className="with-copy">
                               <code>{profile.keyHint}</code>
                               <button
                                 type="button"
                                 className="icon-mini"
-                                title="复制密钥"
-                                aria-label="复制密钥"
+                                title={m.keys.copyKey}
+                                aria-label={m.keys.copyKey}
                                 disabled={Boolean(busy)}
                                 onClick={(event) => {
                                   event.stopPropagation();
@@ -448,38 +466,37 @@ export function KeyringView({
                             </dd>
                             {profile.protocol === "anthropic" && (
                               <>
-                                <dt>认证头</dt>
+                                <dt>{m.keys.authHeader}</dt>
                                 <dd>{profile.authMode === "bearer" ? "Bearer Token" : "x-api-key"}</dd>
                               </>
                             )}
-                            <dt>适用客户端</dt>
+                            <dt>{m.keys.targets}</dt>
                             <dd>
                               {profile.targets.map((target, targetIndex) => (
                                 <span key={target}>
-                                  {targetIndex > 0 && "、"}
+                                  {targetIndex > 0 && (LIST_SEPARATOR[locale] ?? ", ")}
                                   <b className={`tone-${CLIENT_META[target].tone}`} style={{ color: "var(--tone)", fontWeight: 650 }}>
                                     {CLIENT_META[target].short}
                                   </b>
                                 </span>
                               ))}
                             </dd>
-                            <dt>自动择优</dt>
-                            <dd>{profile.autoSwitch.enabled ? "每 2 分钟按 1 小时可用率择优" : "关闭"}</dd>
-                            <dt>上次切换</dt>
-                            <dd>{relativeTime(profile.lastAppliedAt)}</dd>
+                            <dt>{m.keys.autoSwitch}</dt>
+                            <dd>{profile.autoSwitch.enabled ? m.keys.autoSwitchOn : m.keys.autoSwitchOff}</dd>
+                            <dt>{m.keys.lastApplied}</dt>
+                            <dd>{relativeTime(profile.lastAppliedAt, locale, m.keys.never)}</dd>
                           </dl>
                           <span className="keyring-actions">
                             <button
                               type="button"
                               className="ghost-pill"
-                              title="请求模型列表并保存可用模型"
                               disabled={Boolean(busy)}
                               onClick={() => onDiscoverModels(profile.id)}
                             >
                               {discovering
                                 ? <LoaderCircle size={12} className="spin" />
                                 : <RefreshCw size={12} />}
-                              识别模型
+                              {m.keys.discoverModels}
                             </button>
                             <button
                               type="button"
@@ -487,7 +504,7 @@ export function KeyringView({
                               disabled={Boolean(busy)}
                               onClick={() => onEdit(profile)}
                             >
-                              <Pencil size={12} />编辑
+                              <Pencil size={12} />{m.keys.edit}
                             </button>
                             <button
                               type="button"
@@ -495,7 +512,7 @@ export function KeyringView({
                               disabled={Boolean(busy)}
                               onClick={() => onDuplicate(profile)}
                             >
-                              <CopyPlus size={12} />复制
+                              <CopyPlus size={12} />{m.keys.duplicate}
                             </button>
                             <button
                               type="button"
@@ -503,7 +520,7 @@ export function KeyringView({
                               disabled={Boolean(busy)}
                               onClick={() => onDelete(profile)}
                             >
-                              <Trash2 size={12} />删除
+                              <Trash2 size={12} />{m.keys.delete}
                             </button>
                           </span>
                         </div>
