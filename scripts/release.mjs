@@ -26,12 +26,12 @@ const SOURCE_ENTRIES = [
 const SKIP_DIRS = new Set(["node_modules", "__pycache__"]);
 
 const artifacts = [
-  `Keydeck-Portable-${version}-x64.exe`,
-  `Keydeck-Setup-${version}-x64.exe`,
-  `Keydeck-Setup-${version}-x64.exe.blockmap`,
+  `AgentGate-Portable-${version}-x64.exe`,
+  `AgentGate-Setup-${version}-x64.exe`,
+  `AgentGate-Setup-${version}-x64.exe.blockmap`,
   "latest.yml",
 ];
-const sourceZip = `Keydeck-${version}-source.zip`;
+const sourceZip = `AgentGate-${version}-source.zip`;
 
 async function sha256(file) {
   const hash = createHash("sha256");
@@ -44,7 +44,7 @@ async function pruneOldVersions() {
   const locked = [];
   for (const [dir, isStale] of [
     [OUTPUT_DIR, (name) => !name.includes(version)],
-    [RELEASE_DIR, (name) => name.startsWith("Keydeck-") && !name.includes(version)],
+    [RELEASE_DIR, (name) => name.startsWith("AgentGate-") && !name.includes(version)],
   ]) {
     const entries = await fs.readdir(dir).catch(() => []);
     for (const name of entries) {
@@ -120,8 +120,8 @@ for (const name of artifacts) {
 await buildSourceZip(await collectSourceFiles());
 
 const checksumTargets = [
-  `Keydeck-Portable-${version}-x64.exe`,
-  `Keydeck-Setup-${version}-x64.exe`,
+  `AgentGate-Portable-${version}-x64.exe`,
+  `AgentGate-Setup-${version}-x64.exe`,
   sourceZip,
 ];
 const lines = [];

@@ -659,8 +659,8 @@ class GatewayService {
       apiKey: this.localToken,
       localBaseUrl: baseUrl,
       adapterOptions: {
-        providerId: 'keydeck_gateway',
-        providerName: 'Keydeck Local Gateway',
+        providerId: 'agentgate_gateway',
+        providerName: 'Agent;Gate Local Gateway',
       },
       mode: 'gateway',
     }

@@ -15,7 +15,7 @@ import type { BusyAction, ToastState } from "../ui-types";
 
 const DEFAULT_TOAST_DURATION_MS = 4_200;
 
-export interface KeydeckController {
+export interface AgentGateController {
   data: BootstrapData;
   busy: BusyAction | null;
   busyId?: string;
@@ -45,7 +45,7 @@ export interface KeydeckController {
 }
 
 /**
- * 统一管理 Keydeck 主界面的异步数据与命令状态。
+ * 统一管理 Agent;Gate 主界面的异步数据与命令状态。
  *
  * Hook 负责调用受隔离的 preload API、合并返回数据、维护 loading 状态并将
  * 异常转换为提示条。所有写入副作用都由 Electron 主进程执行；失败时本地状态
@@ -53,7 +53,7 @@ export interface KeydeckController {
  *
  * @returns 主界面需要的数据、忙碌状态和操作函数。
  */
-export function useKeydeckController(): KeydeckController {
+export function useAgentGateController(): AgentGateController {
   const [data, setData] = useState<BootstrapData>(EMPTY_BOOTSTRAP);
 
   /** 应用完整快照；缺失的可选字段沿用当前值，避免请求记录和设置被清空。 */

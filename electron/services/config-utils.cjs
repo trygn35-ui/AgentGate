@@ -11,7 +11,7 @@ const {
 const writeFileAtomic = require('write-file-atomic')
 const { PROTOCOL } = require('./schemas.cjs')
 
-const MANAGED_CODEX_PROVIDER_ID = 'keydeck'
+const MANAGED_CODEX_PROVIDER_ID = 'agentgate'
 const PRIVATE_FILE_MODE = 0o600
 
 /**
@@ -216,7 +216,7 @@ function codexProviderState(source, providerId) {
 function isCodexProviderHeader(line, providerId) {
   if (!/^\s*\[[^\]]+\]\s*(?:#.*)?$/.test(line)) return false
   try {
-    const marker = '__keydeck_provider_marker__'
+    const marker = '__agentgate_provider_marker__'
     const parsed = TOML.parse(`${line}\n${marker} = true\n`)
     return parsed.model_providers?.[providerId]?.[marker] === true
   } catch {
@@ -292,9 +292,9 @@ function restoreCodexGatewayBaseUrl(source, state) {
 }
 
 /**
- * 仅更新 Codex 顶层选择项和 Keydeck 自有 provider 表。
+ * 仅更新 Codex 顶层选择项和 Agent;Gate 自有 provider 表。
  *
- * 其他 provider、MCP、插件、注释和顺序保持不变；旧的 Keydeck 子表会一起删除，
+ * 其他 provider、MCP、插件、注释和顺序保持不变；旧的 Agent;Gate 子表会一起删除，
  * 避免残留请求头继续生效。
  *
  * @param {string} source 原始 TOML。
@@ -307,7 +307,7 @@ function restoreCodexGatewayBaseUrl(source, state) {
 function patchCodexToml(source, profile, apiKey, options = {}) {
   assertValidToml(source, 'Codex config.toml')
   const providerId = options.providerId || MANAGED_CODEX_PROVIDER_ID
-  const providerName = options.providerName || `Keydeck - ${profile.name}`
+  const providerName = options.providerName || `Agent;Gate - ${profile.name}`
   const eol = source.includes('\r\n') ? '\r\n' : '\n'
   let lines = source ? source.replace(/\r\n/g, '\n').split('\n') : []
   if (lines.at(-1) === '') lines.pop()
@@ -376,7 +376,7 @@ function patchCodexToml(source, profile, apiKey, options = {}) {
  * @param {string} providerId 受管 provider 标识。
  * @returns {string} 恢复后的 TOML。
  */
-function restoreCodexManagedState(source, state, providerId = 'keydeck_gateway') {
+function restoreCodexManagedState(source, state, providerId = 'agentgate_gateway') {
   assertValidToml(source, 'Codex config.toml')
   const eol = source.includes('\r\n') ? '\r\n' : '\n'
   let lines = source ? source.replace(/\r\n/g, '\n').split('\n') : []

@@ -10,7 +10,7 @@ import { ProfileEditor } from "./components/ProfileEditor";
 import { SettingsView } from "./components/SettingsView";
 import { Toast } from "./components/Toast";
 import { APP_VERSION, DEFAULT_SETTINGS } from "./config";
-import { useKeydeckController } from "./hooks/useKeydeckController";
+import { useAgentGateController } from "./hooks/useAgentGateController";
 import { api, isDesktop } from "./lib/api";
 import type { Profile, SaveProfileInput } from "./types";
 import type { View } from "./ui-types";
@@ -34,7 +34,7 @@ function isContextMenuTargetInteractive(target: EventTarget | null): boolean {
 }
 
 function App(): ReactElement {
-  const controller = useKeydeckController();
+  const controller = useAgentGateController();
   const [view, setView] = useState<View>("overview");
   const [editor, setEditor] = useState<EditorState>({ open: false });
   const [pendingDelete, setPendingDelete] = useState<Profile>();
@@ -139,9 +139,9 @@ function App(): ReactElement {
   return (
     <div className="app-shell" onContextMenu={handleContextBack}>
       <header className="topbar">
-        <div className="brand-mark" aria-label="Key Core">
+        <div className="brand-mark" aria-label="Agent;Gate">
           <span className="brand-glyph"><Zap size={15} strokeWidth={2.5} fill="currentColor" /></span>
-          <strong>Key Core</strong>
+          <strong>Agent;Gate</strong>
         </div>
         <nav className="top-nav" aria-label="功能导航">
           {NAV_ITEMS.map((item) => (
@@ -253,7 +253,7 @@ function App(): ReactElement {
         <span><i className="status-dot" style={{ background: statusDot }} />{statusText}</span>
         <span><ShieldCheck size={12} />DPAPI 本机加密</span>
         <span className="footer-right">
-          {controller.data.profiles.length} 方案 / 4 客户端 · Key Core {APP_VERSION}
+          {controller.data.profiles.length} 方案 / 4 客户端 · Agent;Gate {APP_VERSION}
           {!isDesktop && " · 界面预览"}
         </span>
       </footer>

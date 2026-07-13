@@ -282,7 +282,7 @@ export interface ApplyResult {
  * 所有 Promise 都可能因参数校验、DPAPI、网络或文件系统错误而拒绝；调用方必须
  * 显式处理失败。接口不会返回明文 Key。
  */
-export interface KeydeckBridge {
+export interface AgentGateBridge {
   /** 读取方案、客户端扫描状态和公开历史。 */
   getBootstrap(): Promise<BootstrapData>;
   /** 新建或更新方案；编辑时缺失 apiKey 表示保留现有密文。 */
@@ -327,6 +327,6 @@ export interface KeydeckBridge {
 
 declare global {
   interface Window {
-    keydeck?: KeydeckBridge;
+    agentgate?: AgentGateBridge;
   }
 }

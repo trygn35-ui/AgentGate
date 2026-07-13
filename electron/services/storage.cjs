@@ -34,7 +34,7 @@ class JsonFileStore {
     try {
       value = JSON.parse(source)
     } catch {
-      throw new Error(`Keydeck data file is not valid JSON: ${path.basename(this.filePath)}`)
+      throw new Error(`Agent;Gate data file is not valid JSON: ${path.basename(this.filePath)}`)
     }
     return this.schema.parse(value)
   }

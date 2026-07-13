@@ -46,9 +46,11 @@ const {
 const { UpdateService } = require('./services/update-service.cjs')
 const { CHANNELS, registerIpcHandlers } = require('./services/ipc.cjs')
 
-const APP_NAME = 'Keydeck'
-const APP_DISPLAY_NAME = 'Key Core'
-const APP_USER_MODEL_ID = 'dev.keydeck.desktop'
+const APP_NAME = 'agentgate'
+const APP_DISPLAY_NAME = 'Agent;Gate'
+const APP_USER_MODEL_ID = 'dev.agentgate.desktop'
+/** 0.8.0 及更早版本使用的数据目录名；首次启动时自动迁移。 */
+const LEGACY_APP_NAMES = Object.freeze(['Keydeck'])
 const DATA_DIRECTORY_NAME = 'data'
 const PROFILE_STORE_FILE = 'profiles.json'
 const HISTORY_STORE_FILE = 'history.json'
@@ -79,6 +81,36 @@ const WindowStateSchema = z.object({
 })
 
 app.setName(APP_NAME)
+
+/**
+ * 把旧版数据目录整体迁移到当前目录。
+ *
+ * 只在当前目录尚无数据时执行，避免覆盖新数据。Key 密文由 DPAPI 加密并绑定当前
+ * Windows 用户，与目录位置无关，因此直接复制即可解密。迁移失败时保留旧目录不动，
+ * 以空配置启动，用户仍可手动复制。
+ *
+ * @returns {Promise<string | undefined>} 迁移来源目录；无需迁移时返回 undefined。
+ */
+async function migrateLegacyUserData() {
+  const fsp = require('node:fs/promises')
+  const current = app.getPath('userData')
+  const currentData = path.join(current, DATA_DIRECTORY_NAME)
+  if (await fsp.stat(currentData).catch(() => undefined)) return undefined
+
+  const parent = path.dirname(current)
+  for (const legacyName of LEGACY_APP_NAMES) {
+    const legacyData = path.join(parent, legacyName, DATA_DIRECTORY_NAME)
+    if (!await fsp.stat(legacyData).catch(() => undefined)) continue
+    try {
+      await fsp.mkdir(current, { recursive: true })
+      await fsp.cp(legacyData, currentData, { recursive: true })
+      return path.join(parent, legacyName)
+    } catch {
+      return undefined
+    }
+  }
+  return undefined
+}
 
 let mainWindow
 let tray
@@ -153,6 +185,8 @@ function createServices() {
     vault,
     requestMonitor,
     onStateChanged: (event) => {
+      // 托盘常驻，即使窗口已隐藏或销毁也要反映网关状态。
+      refreshTray()
       if (!mainWindow || mainWindow.isDestroyed()) return
       mainWindow.webContents.send(CHANNELS.stateChanged, {
         type: 'gateway-state-changed',
@@ -347,18 +381,37 @@ function showMainWindow() {
   mainWindow.focus()
 }
 
+function trayIcon(gatewayRunning) {
+  const name = gatewayRunning ? 'tray-on.ico' : 'tray-off.ico'
+  return nativeImage.createFromPath(path.join(__dirname, '..', 'assets', name))
+}
+
+/**
+ * 按网关运行状态刷新托盘图标与提示文本。
+ *
+ * 网关运行时显示实心品牌图标并带绿点，关闭时显示灰色描边图标，
+ * 让用户不用打开窗口就能确认接管状态。
+ */
+function refreshTray() {
+  if (!tray || tray.isDestroyed()) return
+  const gateway = services?.gatewayService.getPublicState()
+  const running = gateway?.status === 'running' || gateway?.status === 'starting'
+  tray.setImage(trayIcon(running))
+  tray.setToolTip(running
+    ? `${APP_DISPLAY_NAME} · 网关运行中 · ${gateway.host}:${gateway.port}`
+    : `${APP_DISPLAY_NAME} · 网关已关闭`)
+}
+
 function createTray() {
   if (tray) return tray
-  const iconPath = path.join(__dirname, '..', 'assets', 'icon.ico')
-  const icon = nativeImage.createFromPath(iconPath)
-  tray = new Tray(icon)
-  tray.setToolTip(APP_DISPLAY_NAME)
+  tray = new Tray(trayIcon(false))
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: `打开 ${APP_DISPLAY_NAME}`, click: showMainWindow },
     { type: 'separator' },
     { label: `退出 ${APP_DISPLAY_NAME}（暂停网关）`, click: () => app.quit() },
   ]))
   tray.on('double-click', showMainWindow)
+  refreshTray()
   return tray
 }
 
@@ -373,6 +426,8 @@ if (!hasSingleInstanceLock) {
   app.whenReady().then(async () => {
     app.setAppUserModelId(APP_USER_MODEL_ID)
     Menu.setApplicationMenu(null)
+    // 必须早于任何数据读取，否则会以空配置覆盖旧版数据。
+    await migrateLegacyUserData()
     services = createServices()
     const settings = await services.settingsService.initialize()
     await services.requestMonitor.initialize()
@@ -388,7 +443,7 @@ if (!hasSingleInstanceLock) {
       },
     })
     // 无边框窗口的最小化/最大化/关闭；关闭沿用 close 事件里的托盘驻留判断。
-    ipcMain.handle('keydeck:window-control', (_event, action) => {
+    ipcMain.handle('agentgate:window-control', (_event, action) => {
       if (!mainWindow || mainWindow.isDestroyed()) return
       if (action === 'minimize') mainWindow.minimize()
       else if (action === 'maximize') {

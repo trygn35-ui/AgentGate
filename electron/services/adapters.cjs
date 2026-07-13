@@ -14,9 +14,11 @@ const {
 } = require('./config-utils.cjs')
 const { AUTH_MODE, PROTOCOL, TARGET } = require('./schemas.cjs')
 
-const MANAGED_PROVIDER_ID = 'keydeck'
-const GATEWAY_PROVIDER_ID = 'keydeck_gateway'
-const GATEWAY_PROVIDER_NAME = 'Keydeck Local Gateway'
+const MANAGED_PROVIDER_ID = 'agentgate'
+const GATEWAY_PROVIDER_ID = 'agentgate_gateway'
+const GATEWAY_PROVIDER_NAME = 'Agent;Gate Local Gateway'
+/** 0.8.0 及更早版本写入的 provider id；停止网关时一并清理，避免留下孤儿配置。 */
+const LEGACY_PROVIDER_IDS = Object.freeze(['keydeck', 'keydeck_gateway'])
 const GATEWAY_OWNERSHIP = Object.freeze({
   OWNED: 'owned',
   RELEASED: 'released',
@@ -332,7 +334,7 @@ function createAdapters(paths) {
         const providerId = options.gateway ? GATEWAY_PROVIDER_ID : MANAGED_PROVIDER_ID
         const provider = {
           npm: openCodePackage(profile.protocol),
-          name: options.gateway ? GATEWAY_PROVIDER_NAME : `Keydeck - ${profile.name}`,
+          name: options.gateway ? GATEWAY_PROVIDER_NAME : `Agent;Gate - ${profile.name}`,
           options: { baseURL: profile.baseUrl },
           models: {
             [profile.model]: { name: profile.model },
@@ -359,7 +361,12 @@ function createAdapters(paths) {
           sources.get(paths.opencode.config) || '{}',
           'OpenCode configuration',
         )
-        const selectedProviderId = [MANAGED_PROVIDER_ID, GATEWAY_PROVIDER_ID].find(
+        // 兼容旧 provider id：升级前写入的配置仍需被正确识别为 Agent;Gate 接管。
+        const selectedProviderId = [
+          MANAGED_PROVIDER_ID,
+          GATEWAY_PROVIDER_ID,
+          ...LEGACY_PROVIDER_IDS,
+        ].find(
           (providerId) => typeof data?.model === 'string' && data.model.startsWith(`${providerId}/`),
         )
         const modelPrefix = selectedProviderId ? `${selectedProviderId}/` : undefined

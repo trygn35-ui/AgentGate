@@ -5,7 +5,7 @@ import type {
   GatewayStartSettings,
   GatewayState,
   HistoryEntry,
-  KeydeckBridge,
+  AgentGateBridge,
   Profile,
   SaveProfileInput,
   AppSettings,
@@ -246,7 +246,7 @@ function getMockKeyHint(input: SaveProfileInput, existing?: Profile): string {
   return existing?.keyHint ?? "•••• NEW";
 }
 
-const mockBridge: KeydeckBridge = {
+const mockBridge: AgentGateBridge = {
   async getBootstrap(): Promise<BootstrapData> {
     return clone({
       profiles: mockProfiles,
@@ -560,7 +560,7 @@ const mockBridge: KeydeckBridge = {
 /**
  * 渲染进程统一 API。Electron 中使用隔离的 preload 桥，纯浏览器预览使用内存实现。
  */
-export const api: KeydeckBridge = window.keydeck ?? mockBridge;
+export const api: AgentGateBridge = window.agentgate ?? mockBridge;
 
 /** 当前页面是否运行在具备本地文件权限的 Electron 容器中。 */
-export const isDesktop = Boolean(window.keydeck);
+export const isDesktop = Boolean(window.agentgate);

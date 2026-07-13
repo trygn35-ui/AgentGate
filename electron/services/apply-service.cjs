@@ -110,7 +110,7 @@ function uniquePaths(drafts) {
 
 function isConfigurationRace(error) {
   const message = error instanceof Error ? error.message : ''
-  return message.includes('Configuration no longer matches the last Keydeck write:')
+  return message.includes('Configuration no longer matches the last Agent;Gate write:')
     || message.includes('Configuration changed while preparing the switch:')
     || message.includes('Configuration changed before it could be written:')
 }
@@ -488,7 +488,7 @@ class ApplyService {
         || (target !== TARGET.CODEX && currentOwnership === GATEWAY_OWNERSHIP.RELEASED)
       if (currentOwnership === GATEWAY_OWNERSHIP.CONFLICT) {
         throw new Error(
-          `Local gateway configuration conflict for ${target}; managed fields changed outside Keydeck`,
+          `Local gateway configuration conflict for ${target}; managed fields changed outside Agent;Gate`,
         )
       }
       if (shouldCapture) {
@@ -824,7 +824,7 @@ class ApplyService {
           for (const item of drafts) {
             const expectedHash = hashesResult.data[path.resolve(item.path).toLowerCase()]
             if (!expectedHash || item.before.hash !== expectedHash) {
-              throw new Error(`Configuration no longer matches the last Keydeck write: ${item.path}`)
+              throw new Error(`Configuration no longer matches the last Agent;Gate write: ${item.path}`)
             }
           }
         }

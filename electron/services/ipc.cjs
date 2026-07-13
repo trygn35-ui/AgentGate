@@ -2,25 +2,25 @@ const { z } = require('zod')
 const { SaveProfileSchema, validationMessage } = require('./schemas.cjs')
 
 const CHANNELS = Object.freeze({
-  bootstrap: 'keydeck:get-bootstrap',
-  saveProfile: 'keydeck:save-profile',
-  duplicateProfile: 'keydeck:duplicate-profile',
-  reorderProfiles: 'keydeck:reorder-profiles',
-  deleteProfile: 'keydeck:delete-profile',
-  copyProfileKey: 'keydeck:copy-profile-key',
-  testProfile: 'keydeck:test-profile',
-  checkProfileHealth: 'keydeck:check-profile-health',
-  probeProfile: 'keydeck:probe-profile',
-  applyProfile: 'keydeck:apply-profile',
-  undoHistory: 'keydeck:undo-history',
-  openConfig: 'keydeck:open-config',
-  startGateway: 'keydeck:start-gateway',
-  stopGateway: 'keydeck:stop-gateway',
-  updateSettings: 'keydeck:update-settings',
-  checkForUpdate: 'keydeck:check-for-update',
-  downloadUpdate: 'keydeck:download-update',
-  installUpdate: 'keydeck:install-update',
-  stateChanged: 'keydeck:state-changed',
+  bootstrap: 'agentgate:get-bootstrap',
+  saveProfile: 'agentgate:save-profile',
+  duplicateProfile: 'agentgate:duplicate-profile',
+  reorderProfiles: 'agentgate:reorder-profiles',
+  deleteProfile: 'agentgate:delete-profile',
+  copyProfileKey: 'agentgate:copy-profile-key',
+  testProfile: 'agentgate:test-profile',
+  checkProfileHealth: 'agentgate:check-profile-health',
+  probeProfile: 'agentgate:probe-profile',
+  applyProfile: 'agentgate:apply-profile',
+  undoHistory: 'agentgate:undo-history',
+  openConfig: 'agentgate:open-config',
+  startGateway: 'agentgate:start-gateway',
+  stopGateway: 'agentgate:stop-gateway',
+  updateSettings: 'agentgate:update-settings',
+  checkForUpdate: 'agentgate:check-for-update',
+  downloadUpdate: 'agentgate:download-update',
+  installUpdate: 'agentgate:install-update',
+  stateChanged: 'agentgate:state-changed',
 })
 
 const GatewayStartSchema = z.object({
@@ -79,7 +79,7 @@ function registerIpcHandlers({
       return verified ? client : {
         ...client,
         drifted: true,
-        warning: 'Configuration no longer matches the last Keydeck write',
+        warning: 'Configuration no longer matches the last Agent;Gate write',
       }
     })
     const rawGateway = gatewayService.getPublicState()

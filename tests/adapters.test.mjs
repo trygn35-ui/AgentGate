@@ -97,12 +97,12 @@ model_provider = "old"
 model = "old-model"
 approval_policy = "on-request"
 
-[model_providers.keydeck]
+[model_providers.agentgate]
 name = "Old managed"
 base_url = "https://old.example/v1"
 experimental_bearer_token = "old-secret"
 
-[model_providers.keydeck.http_headers]
+[model_providers.agentgate.http_headers]
 X_OLD = "remove-me"
 
 [model_providers.other]
@@ -133,17 +133,17 @@ args = ["server.js"]
     expect(parsed.approval_policy).toBe("on-request");
     expect(parsed.mcp_servers.browser.command).toBe("node");
     expect(parsed.model_providers.other.base_url).toBe("https://other.example/v1");
-    expect(parsed.model_provider).toBe("keydeck");
+    expect(parsed.model_provider).toBe("agentgate");
     expect(parsed.model).toBe("gpt-5.2-codex");
-    expect(parsed.model_providers.keydeck.base_url).toBe("https://new.example/v1");
-    expect(parsed.model_providers.keydeck.wire_api).toBe("responses");
-    expect(parsed.model_providers.keydeck.experimental_bearer_token).toBe("sk-codex-secret");
+    expect(parsed.model_providers.agentgate.base_url).toBe("https://new.example/v1");
+    expect(parsed.model_providers.agentgate.wire_api).toBe("responses");
+    expect(parsed.model_providers.agentgate.experimental_bearer_token).toBe("sk-codex-secret");
   });
 
   it("Codex 网关只改活跃 provider 的 base_url", async () => {
     const original = [
       "# 用户的 Codex 配置",
-      'model_provider = "keydeck"',
+      'model_provider = "agentgate"',
       'model = "direct-model"',
       'approval_policy = "on-request"',
       'sandbox_mode = "workspace-write"',
@@ -154,8 +154,8 @@ args = ["server.js"]
       "[projects.'D:\\工作区\\中文项目']",
       'trust_level = "trusted"',
       "",
-      "[model_providers.keydeck]",
-      'name = "Keydeck - 直连方案"',
+      "[model_providers.agentgate]",
+      'name = "Agent;Gate - 直连方案"',
       'base_url = "https://direct.example/v1"',
       'wire_api = "responses"',
       "requires_openai_auth = false",
@@ -193,10 +193,10 @@ args = ["server.js"]
     expect(parsed.features.web_search_request).toBe(true);
     expect(parsed.projects["D:\\工作区\\中文项目"].trust_level).toBe("trusted");
     expect(parsed.mcp_servers.browser.args).toEqual(["服务.js"]);
-    expect(parsed.model_provider).toBe("keydeck");
+    expect(parsed.model_provider).toBe("agentgate");
     expect(parsed.model).toBe("direct-model");
-    expect(parsed.model_providers.keydeck).toEqual({
-      name: "Keydeck - 直连方案",
+    expect(parsed.model_providers.agentgate).toEqual({
+      name: "Agent;Gate - 直连方案",
       base_url: "http://127.0.0.1:19431/codex/persistent-route-token",
       wire_api: "responses",
       requires_openai_auth: false,
@@ -206,7 +206,7 @@ args = ["server.js"]
       name: "未知供应商",
       base_url: "https://unknown.example/v1",
     });
-    expect(parsed.model_providers.keydeck_gateway).toBeUndefined();
+    expect(parsed.model_providers.agentgate_gateway).toBeUndefined();
     expect(draft.content).not.toContain("gateway-secret");
   });
 
@@ -410,7 +410,7 @@ wire_api = "chat"
           const source = await fs.readFile(paths.opencode.config, "utf8");
           await fs.writeFile(
             paths.opencode.config,
-            source.replace("keydeck_gateway/gpt-old", "other/gpt-old"),
+            source.replace("agentgate_gateway/gpt-old", "other/gpt-old"),
             "utf8",
           );
         },
@@ -491,25 +491,25 @@ wire_api = "chat"
     expect(drafts[0].content).toContain("// 保留已有插件");
     expect(config.plugin).toEqual(["oh-my-opencode"]);
     expect(config.provider.other).toBeDefined();
-    expect(config.provider.keydeck.npm).toBe("@ai-sdk/openai");
-    expect(config.provider.keydeck.options.baseURL).toBe("https://responses.example/v1");
-    expect(config.model).toBe("keydeck/gpt-5.2");
+    expect(config.provider.agentgate.npm).toBe("@ai-sdk/openai");
+    expect(config.provider.agentgate.options.baseURL).toBe("https://responses.example/v1");
+    expect(config.model).toBe("agentgate/gpt-5.2");
     expect(auth.other.refresh).toBe("keep-me");
-    expect(auth.keydeck).toEqual({ type: "api", key: "sk-opencode-secret" });
+    expect(auth.agentgate).toEqual({ type: "api", key: "sk-opencode-secret" });
   });
 
   it("writes OpenCode gateway state without replacing the direct provider", async () => {
     await seed(paths.opencode.config, `{
   "provider": {
-    "keydeck": {
-      "name": "Keydeck - Direct",
+    "agentgate": {
+      "name": "Agent;Gate - Direct",
       "options": { "baseURL": "https://direct.example/v1" }
     }
   },
-  "model": "keydeck/direct-model"
+  "model": "agentgate/direct-model"
 }\n`);
     await seed(paths.opencode.auth, `{
-  "keydeck": { "type": "api", "key": "direct-secret" }
+  "agentgate": { "type": "api", "key": "direct-secret" }
 }\n`);
 
     const drafts = await adapters.opencode.build(
@@ -526,12 +526,12 @@ wire_api = "chat"
     const config = parse(drafts.find((draft) => draft.path === paths.opencode.config).content);
     const auth = parse(drafts.find((draft) => draft.path === paths.opencode.auth).content);
 
-    expect(config.provider.keydeck.options.baseURL).toBe("https://direct.example/v1");
-    expect(config.provider.keydeck_gateway.name).toBe("Keydeck Local Gateway");
-    expect(config.provider.keydeck_gateway.options.baseURL).toBe("http://127.0.0.1:19431/v1");
-    expect(config.model).toBe("keydeck_gateway/gateway-model");
-    expect(auth.keydeck).toEqual({ type: "api", key: "direct-secret" });
-    expect(auth.keydeck_gateway).toEqual({ type: "api", key: "gateway-secret" });
+    expect(config.provider.agentgate.options.baseURL).toBe("https://direct.example/v1");
+    expect(config.provider.agentgate_gateway.name).toBe("Agent;Gate Local Gateway");
+    expect(config.provider.agentgate_gateway.options.baseURL).toBe("http://127.0.0.1:19431/v1");
+    expect(config.model).toBe("agentgate_gateway/gateway-model");
+    expect(auth.agentgate).toEqual({ type: "api", key: "direct-secret" });
+    expect(auth.agentgate_gateway).toEqual({ type: "api", key: "gateway-secret" });
   });
 
   it("patches Gemini env without dropping comments or unrelated settings", async () => {
@@ -592,9 +592,9 @@ experimental_bearer_token = "codex-before-secret"
 command = "before"
 `);
     await seed(paths.opencode.config, `{
-  "model": "keydeck_gateway/opencode-before",
+  "model": "agentgate_gateway/opencode-before",
   "provider": {
-    "keydeck_gateway": {
+    "agentgate_gateway": {
       "name": "Existing gateway",
       "options": { "baseURL": "https://opencode.before/v1" }
     },
@@ -602,7 +602,7 @@ command = "before"
   }
 }\n`);
     await seed(paths.opencode.auth, `{
-  "keydeck_gateway": { "type": "api", "key": "opencode-before-secret" },
+  "agentgate_gateway": { "type": "api", "key": "opencode-before-secret" },
   "other": { "type": "oauth", "refresh": "keep" }
 }\n`);
     await seed(paths.gemini.env, `GEMINI_API_KEY="gemini-before-secret"
@@ -704,10 +704,10 @@ trust_level = "trusted"
 
     const openCode = parse(await fs.readFile(paths.opencode.config, "utf8"));
     const openCodeAuth = parse(await fs.readFile(paths.opencode.auth, "utf8"));
-    expect(openCode.model).toBe("keydeck_gateway/opencode-before");
-    expect(openCode.provider.keydeck_gateway.options.baseURL).toBe("https://opencode.before/v1");
+    expect(openCode.model).toBe("agentgate_gateway/opencode-before");
+    expect(openCode.provider.agentgate_gateway.options.baseURL).toBe("https://opencode.before/v1");
     expect(openCode.runtimeAdded.keep).toBe(true);
-    expect(openCodeAuth.keydeck_gateway.key).toBe("opencode-before-secret");
+    expect(openCodeAuth.agentgate_gateway.key).toBe("opencode-before-secret");
     expect(openCodeAuth.other.refresh).toBe("keep");
 
     const geminiEnv = await fs.readFile(paths.gemini.env, "utf8");
@@ -792,7 +792,7 @@ wire_api = "responses"
     const codex = TOML.parse(await fs.readFile(paths.codex.config, "utf8"));
     expect(codex.model_provider).toBe("other");
     expect(codex.model).toBeUndefined();
-    expect(codex.model_providers.keydeck_gateway).toBeUndefined();
+    expect(codex.model_providers.agentgate_gateway).toBeUndefined();
     expect(codex.model_providers.other.base_url).toBeUndefined();
     expect(codex.model_providers.other.wire_api).toBe("responses");
     expect(codex.approval_policy).toBe("never");
@@ -800,10 +800,10 @@ wire_api = "responses"
     const openCode = parse(await fs.readFile(paths.opencode.config, "utf8"));
     const openCodeAuth = parse(await fs.readFile(paths.opencode.auth, "utf8"));
     expect(openCode.model).toBeUndefined();
-    expect(openCode.provider.keydeck_gateway).toBeUndefined();
+    expect(openCode.provider.agentgate_gateway).toBeUndefined();
     expect(openCode.provider.other.keep).toBe(true);
     expect(openCode.plugin).toEqual(["keep"]);
-    expect(openCodeAuth.keydeck_gateway).toBeUndefined();
+    expect(openCodeAuth.agentgate_gateway).toBeUndefined();
     expect(openCodeAuth.other.key).toBe("keep");
 
     const geminiEnv = await fs.readFile(paths.gemini.env, "utf8");
@@ -815,7 +815,7 @@ wire_api = "responses"
 
   it("does not write captured secrets to adapter logs", async () => {
     await seed(paths.opencode.auth, `{
-  "keydeck_gateway": { "type": "api", "key": "baseline-must-not-be-logged" }
+  "agentgate_gateway": { "type": "api", "key": "baseline-must-not-be-logged" }
 }\n`);
     const spies = ["log", "info", "warn", "error"].map((method) => (
       vi.spyOn(console, method).mockImplementation(() => {})
@@ -851,5 +851,27 @@ wire_api = "responses"
     expect(resolved.gemini.env).toBe(path.join(root, "gemini-custom", ".env"));
     expect(resolved.opencode.config).toBe(path.join(openCodeDir, "opencode.jsonc"));
     expect(resolved.opencode.auth).toBe(path.join(root, "xdg-data", "opencode", "auth.json"));
+  });
+});
+
+describe("旧版兼容", () => {
+  it("识别 0.8.0 及更早版本写入的 OpenCode provider", async () => {
+    await seed(paths.opencode.config, `{
+  "provider": {
+    "keydeck_gateway": {
+      "name": "Keydeck Local Gateway",
+      "options": { "baseURL": "http://127.0.0.1:17863/opencode/v1" }
+    }
+  },
+  "model": "keydeck_gateway/gpt-5.2"
+}\n`);
+
+    const sources = new Map([
+      [paths.opencode.config, await fs.readFile(paths.opencode.config, "utf8")],
+    ]);
+    const inspected = adapters.opencode.inspect(sources);
+
+    expect(inspected.baseUrl).toBe("http://127.0.0.1:17863/opencode/v1");
+    expect(inspected.model).toBe("gpt-5.2");
   });
 });

@@ -1,30 +1,30 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
 const CHANNELS = Object.freeze({
-  bootstrap: 'keydeck:get-bootstrap',
-  saveProfile: 'keydeck:save-profile',
-  duplicateProfile: 'keydeck:duplicate-profile',
-  reorderProfiles: 'keydeck:reorder-profiles',
-  deleteProfile: 'keydeck:delete-profile',
-  copyProfileKey: 'keydeck:copy-profile-key',
-  testProfile: 'keydeck:test-profile',
-  checkProfileHealth: 'keydeck:check-profile-health',
-  probeProfile: 'keydeck:probe-profile',
-  applyProfile: 'keydeck:apply-profile',
-  undoHistory: 'keydeck:undo-history',
-  openConfig: 'keydeck:open-config',
-  startGateway: 'keydeck:start-gateway',
-  stopGateway: 'keydeck:stop-gateway',
-  updateSettings: 'keydeck:update-settings',
-  windowControl: 'keydeck:window-control',
-  checkForUpdate: 'keydeck:check-for-update',
-  downloadUpdate: 'keydeck:download-update',
-  installUpdate: 'keydeck:install-update',
-  stateChanged: 'keydeck:state-changed',
+  bootstrap: 'agentgate:get-bootstrap',
+  saveProfile: 'agentgate:save-profile',
+  duplicateProfile: 'agentgate:duplicate-profile',
+  reorderProfiles: 'agentgate:reorder-profiles',
+  deleteProfile: 'agentgate:delete-profile',
+  copyProfileKey: 'agentgate:copy-profile-key',
+  testProfile: 'agentgate:test-profile',
+  checkProfileHealth: 'agentgate:check-profile-health',
+  probeProfile: 'agentgate:probe-profile',
+  applyProfile: 'agentgate:apply-profile',
+  undoHistory: 'agentgate:undo-history',
+  openConfig: 'agentgate:open-config',
+  startGateway: 'agentgate:start-gateway',
+  stopGateway: 'agentgate:stop-gateway',
+  updateSettings: 'agentgate:update-settings',
+  windowControl: 'agentgate:window-control',
+  checkForUpdate: 'agentgate:check-for-update',
+  downloadUpdate: 'agentgate:download-update',
+  installUpdate: 'agentgate:install-update',
+  stateChanged: 'agentgate:state-changed',
 })
 
 /**
- * 以 `window.keydeck` 暴露给渲染进程的最小 API。
+ * 以 `window.agentgate` 暴露给渲染进程的最小 API。
  *
  * 公开方案结构：
  * `{ id, name, protocol, baseUrl, endpoints, availableModels, autoSwitch,
@@ -36,20 +36,20 @@ const CHANNELS = Object.freeze({
  * 明文 Key；复制操作由主进程直接写入剪贴板。
  *
  * 方法与 IPC 通道：
- * - getBootstrap()                    -> keydeck:get-bootstrap
- * - saveProfile(input)                -> keydeck:save-profile
- * - duplicateProfile(id)              -> keydeck:duplicate-profile
- * - deleteProfile(id)                 -> keydeck:delete-profile
- * - copyProfileKey(id)                -> keydeck:copy-profile-key
- * - testProfile(id)                   -> keydeck:test-profile
- * - checkProfileHealth(id)            -> keydeck:check-profile-health
- * - applyProfile(id, targets?)        -> keydeck:apply-profile（只分配本地网关路由）
- * - undoHistory(id)                   -> keydeck:undo-history
- * - openConfig(target)                -> keydeck:open-config
- * - startGateway({ port? })           -> keydeck:start-gateway（使用已分配路由）
- * - stopGateway()                     -> keydeck:stop-gateway（保留路由分配）
- * - updateSettings(patch)             -> keydeck:update-settings（保存应用运行设置）
- * - onStateChanged(callback)          -> keydeck:state-changed
+ * - getBootstrap()                    -> agentgate:get-bootstrap
+ * - saveProfile(input)                -> agentgate:save-profile
+ * - duplicateProfile(id)              -> agentgate:duplicate-profile
+ * - deleteProfile(id)                 -> agentgate:delete-profile
+ * - copyProfileKey(id)                -> agentgate:copy-profile-key
+ * - testProfile(id)                   -> agentgate:test-profile
+ * - checkProfileHealth(id)            -> agentgate:check-profile-health
+ * - applyProfile(id, targets?)        -> agentgate:apply-profile（只分配本地网关路由）
+ * - undoHistory(id)                   -> agentgate:undo-history
+ * - openConfig(target)                -> agentgate:open-config
+ * - startGateway({ port? })           -> agentgate:start-gateway（使用已分配路由）
+ * - stopGateway()                     -> agentgate:stop-gateway（保留路由分配）
+ * - updateSettings(patch)             -> agentgate:update-settings（保存应用运行设置）
+ * - onStateChanged(callback)          -> agentgate:state-changed
  */
 const api = Object.freeze({
   getBootstrap: () => ipcRenderer.invoke(CHANNELS.bootstrap),
@@ -79,4 +79,4 @@ const api = Object.freeze({
   },
 })
 
-contextBridge.exposeInMainWorld('keydeck', api)
+contextBridge.exposeInMainWorld('agentgate', api)

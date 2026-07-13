@@ -121,7 +121,7 @@ command = "node"
         requires_openai_auth: true,
         experimental_bearer_token: "user-auth",
       });
-      expect(parsed.model_providers.keydeck_gateway).toBeUndefined();
+      expect(parsed.model_providers.agentgate_gateway).toBeUndefined();
       expect(takenOver).not.toContain("sk-upstream-a");
 
       const recovery = await gatewayBaselineStore.read();
@@ -231,8 +231,8 @@ command = "node"
     try {
       await applyService.startGateway({ port: 0 });
       const takenOver = await fs.readFile(codexPath, "utf8");
-      expect(takenOver).toContain('model_provider = "keydeck_gateway"');
-      expect(takenOver).toContain("[model_providers.keydeck_gateway]");
+      expect(takenOver).toContain('model_provider = "agentgate_gateway"');
+      expect(takenOver).toContain("[model_providers.agentgate_gateway]");
       expect(takenOver).not.toContain("sk-upstream-a");
       expect(takenOver).toContain("[mcp_servers.demo]");
       expect(takenOver).toContain('approval_policy = "on-request"');
@@ -256,7 +256,7 @@ command = "node"
       await fs.writeFile(codexPath, userReleased, "utf8");
       await applyService.assignProfile(profileB.id, ["codex"]);
       const reassignedGateway = await fs.readFile(codexPath, "utf8");
-      expect(reassignedGateway).toContain('model_provider = "keydeck_gateway"');
+      expect(reassignedGateway).toContain('model_provider = "agentgate_gateway"');
       expect(reassignedGateway).not.toContain('model = "user-selected-model"');
 
       const gatewayWithExtensions = reassignedGateway
@@ -271,7 +271,7 @@ command = "node"
       expect(direct).toContain('model_provider = "custom"');
       expect(direct).toContain('model = "user-selected-model"');
       expect(direct).toContain('base_url = "https://custom.example/v1"');
-      expect(direct).not.toContain("[model_providers.keydeck_gateway]");
+      expect(direct).not.toContain("[model_providers.agentgate_gateway]");
       expect(direct).not.toContain("sk-upstream-b");
       expect(direct).toContain('[projects."D:\\\\Work"]');
       expect(direct).toContain('trust_level = "trusted"');
@@ -282,7 +282,7 @@ command = "node"
       await applyService.startGateway({ port: 0 });
       const gatewayAgain = await fs.readFile(codexPath, "utf8");
       const driftGatewayProvider = (pattern, replacement) => gatewayAgain.replace(
-        /(\[model_providers\.keydeck_gateway\][\s\S]*?)(?=\r?\n\[|$)/,
+        /(\[model_providers\.agentgate_gateway\][\s\S]*?)(?=\r?\n\[|$)/,
         (section) => section.replace(pattern, replacement),
       );
       for (const conflicted of [
@@ -304,7 +304,7 @@ command = "node"
         await fs.writeFile(codexPath, gatewayAgain, "utf8");
       }
       const userOwned = gatewayAgain.replace(
-        'model_provider = "keydeck_gateway"',
+        'model_provider = "agentgate_gateway"',
         'model_provider = "custom"',
       );
       await fs.writeFile(codexPath, userOwned, "utf8");
@@ -391,7 +391,7 @@ command = "node"
           await fs.writeFile(
             codexPath,
             source.replace(
-              'model_provider = "keydeck_gateway"',
+              'model_provider = "agentgate_gateway"',
               'model_provider = "custom"',
             ),
             "utf8",
@@ -490,7 +490,7 @@ command = "node"
       source: "auto",
       expectedRevision: revision,
       expectedHashes: verifiedState.hashes,
-    })).rejects.toThrow("no longer matches the last Keydeck write");
+    })).rejects.toThrow("no longer matches the last Agent;Gate write");
     await fs.writeFile(codexPath, live, "utf8");
 
     await applyService.undo(applied.history.id);
