@@ -7,14 +7,14 @@ const DIGITS = "0123456789";
  * 两次变化间隔小于这个值时走快速单步（里程表式）。
  *
  * 高频小步快滚，低频变化才配整卷慢滚。窗口必须盖住整卷慢滚的最长时长
- * （延迟 160 + 时长 ~1700ms），否则周期性变化的值会在慢滚滚到一半时
+ * （延迟 ~320 + 时长 ~3300ms），否则周期性变化的值会在慢滚滚到一半时
  * 又触发下一卷，永远停不下来。
  */
-const QUICK_WINDOW_MS = 2000;
+const QUICK_WINDOW_MS = 4000;
 
 /** 慢滚要滚过的随机数字位数。位数随机，于是每一位的滚动时长天然不同。 */
-const SPIN_MIN = 5;
-const SPIN_MAX = 12;
+const SPIN_MIN = 6;
+const SPIN_MAX = 14;
 
 function isDigit(char: string): boolean {
   return char >= "0" && char <= "9";
@@ -87,17 +87,22 @@ export function RollingChar({ char, ticker }: { char: string; ticker?: boolean }
 
     // 秒表类读数永远快滚——每 10 秒整卷慢滚一次的秒表像坏掉的老虎机
     const now = Date.now();
-    const quick = ticker || now - lastChange.current < QUICK_WINDOW_MS || !canSpin(from, char);
+    // 空位 ↔ 数字只发生在网关开关这类用户亲手扳的动作上，永远值得整卷慢滚；
+    // 否则快速开关时第二次变化会落进快滚窗口，动画被降级成一步小滑。
+    const blankShift = (from === " " || char === " ") && canSpin(from, char);
+    const quick = !blankShift
+      && (ticker || now - lastChange.current < QUICK_WINDOW_MS || !canSpin(from, char));
     lastChange.current = now;
 
     if (quick) {
       // 里程表式单步。方向固定向上——高频跳动再随机方向就成抽搐了。
+      // 时长必须小于动态页 300ms 的跳动周期，否则每跳都把上一步掐断。
       setReel({
         frames: [from, char],
         fromIndex: 0,
         targetIndex: 1,
         spin: false,
-        duration: 230 + Math.random() * 90,
+        duration: 220 + Math.random() * 60,
         delay: 0,
         token,
       });
@@ -116,8 +121,9 @@ export function RollingChar({ char, ticker }: { char: string; ticker?: boolean }
       fromIndex: up ? 0 : steps + 2,
       targetIndex: up ? steps + 1 : 1,
       spin: true,
-      duration: 700 + steps * 60 + Math.random() * 280,
-      delay: Math.random() * 160,
+      // 2.1–3.4s：这不是给赶时间的人看的仪表，慢滚本身就是内容
+      duration: 1400 + steps * 110 + Math.random() * 400,
+      delay: Math.random() * 320,
       token,
     });
   }, [char, ticker]);
@@ -131,14 +137,15 @@ export function RollingChar({ char, ticker }: { char: string; ticker?: boolean }
     const ty = (index: number) => `translateY(${-(index * cell)}%)`;
     const fromTy = -(reel.fromIndex * cell);
     const endTy = -(reel.targetIndex * cell);
-    // 冲过头三分之一格再弹回；方向跟着行进方向走
-    const overTy = endTy + Math.sign(endTy - fromTy) * cell * 0.34;
+    // 轻轻冲过头再落回；方向跟着行进方向走
+    const overTy = endTy + Math.sign(endTy - fromTy) * cell * 0.3;
 
     const move = strip.animate(
       reel.spin
         ? [
-          { transform: `translateY(${fromTy}%)`, easing: "cubic-bezier(.12, .68, .25, 1)" },
-          { transform: `translateY(${overTy}%)`, offset: .82, easing: "cubic-bezier(.35, 0, .3, 1)" },
+          // 前段疾速掠过中间数字，后段用一半以上的时间缓缓滑进停靠格
+          { transform: `translateY(${fromTy}%)`, easing: "cubic-bezier(.14, .6, .16, 1)" },
+          { transform: `translateY(${overTy}%)`, offset: .84, easing: "cubic-bezier(.34, 0, .32, 1)" },
           { transform: `translateY(${endTy}%)` },
         ]
         : [
@@ -153,9 +160,9 @@ export function RollingChar({ char, ticker }: { char: string; ticker?: boolean }
       ? strip.animate(
         [
           { filter: "blur(0px)" },
-          { filter: "blur(1.4px)", offset: .18 },
-          { filter: "blur(.5px)", offset: .55 },
-          { filter: "blur(0px)", offset: .85 },
+          { filter: "blur(1.6px)", offset: .12 },
+          { filter: "blur(.6px)", offset: .45 },
+          { filter: "blur(0px)", offset: .8 },
           { filter: "blur(0px)" },
         ],
         { duration: reel.duration, delay: reel.delay, fill: "both" },
