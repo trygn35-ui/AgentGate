@@ -195,6 +195,26 @@ export interface ActiveRequest {
   receivedBytes?: number;
 }
 
+export type UpdateStatus =
+  | "idle"
+  | "checking"
+  | "available"
+  | "downloading"
+  | "ready"
+  | "up-to-date"
+  | "error";
+
+/** 应用更新状态。便携版不能就地更新，只提示新版本。 */
+export interface UpdateState {
+  state: UpdateStatus;
+  currentVersion: string;
+  portable: boolean;
+  version?: string;
+  percent?: number;
+  message?: string;
+  releaseNotes?: string;
+}
+
 export type StateChangedEvent =
   | {
       type: "profile-tested" | "auto-switch-error";
@@ -216,6 +236,10 @@ export type StateChangedEvent =
   | {
       type: "settings-changed";
       settings: AppSettings;
+    }
+  | {
+      type: "update-state-changed";
+      update: UpdateState;
     };
 
 export interface BootstrapData {
@@ -225,6 +249,7 @@ export interface BootstrapData {
   gateway: GatewayState;
   settings?: AppSettings;
   activeRequests?: ActiveRequest[];
+  update?: UpdateState;
   gatewayRecovery?: {
     skippedTargets: ClientTarget[];
   };
@@ -290,6 +315,12 @@ export interface KeydeckBridge {
   updateSettings?(patch: Partial<AppSettings>): Promise<AppSettings | BootstrapData>;
   /** 无边框窗口的最小化/最大化/关闭控制。仅桌面环境提供。 */
   windowControl?(action: "minimize" | "maximize" | "close"): Promise<void>;
+  /** 检查 GitHub Releases 上是否有新版本。 */
+  checkForUpdate?(): Promise<UpdateState>;
+  /** 下载已发现的更新；便携版改为打开下载页。 */
+  downloadUpdate?(): Promise<UpdateState>;
+  /** 停止网关、恢复客户端配置后退出并安装更新。 */
+  installUpdate?(): Promise<{ ok: boolean }>;
   /** 订阅主进程定时检测和自动切换事件。 */
   onStateChanged(listener: (event: StateChangedEvent) => void): () => void;
 }

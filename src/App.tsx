@@ -240,7 +240,12 @@ function App(): ReactElement {
         <SettingsView
           settings={settings}
           busy={controller.busy === "settings"}
+          update={controller.data.update}
+          version={APP_VERSION}
           onChange={(patch) => void controller.updateSettings(patch)}
+          onCheckUpdate={() => void controller.checkForUpdate()}
+          onDownloadUpdate={() => void controller.downloadUpdate()}
+          onInstallUpdate={() => void controller.installUpdate()}
         />
       )}
 

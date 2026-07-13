@@ -531,6 +531,27 @@ const mockBridge: KeydeckBridge = {
     return clone(mockSettings);
   },
 
+  async checkForUpdate() {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    return {
+      state: "up-to-date" as const,
+      currentVersion: "0.7.8",
+      portable: false,
+    };
+  },
+
+  async downloadUpdate() {
+    return {
+      state: "up-to-date" as const,
+      currentVersion: "0.7.8",
+      portable: false,
+    };
+  },
+
+  async installUpdate() {
+    return { ok: true };
+  },
+
   onStateChanged() {
     return () => {};
   },

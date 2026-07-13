@@ -17,6 +17,9 @@ const CHANNELS = Object.freeze({
   stopGateway: 'keydeck:stop-gateway',
   updateSettings: 'keydeck:update-settings',
   windowControl: 'keydeck:window-control',
+  checkForUpdate: 'keydeck:check-for-update',
+  downloadUpdate: 'keydeck:download-update',
+  installUpdate: 'keydeck:install-update',
   stateChanged: 'keydeck:state-changed',
 })
 
@@ -65,6 +68,9 @@ const api = Object.freeze({
   stopGateway: () => ipcRenderer.invoke(CHANNELS.stopGateway),
   updateSettings: (patch) => ipcRenderer.invoke(CHANNELS.updateSettings, patch),
   windowControl: (action) => ipcRenderer.invoke(CHANNELS.windowControl, action),
+  checkForUpdate: () => ipcRenderer.invoke(CHANNELS.checkForUpdate),
+  downloadUpdate: () => ipcRenderer.invoke(CHANNELS.downloadUpdate),
+  installUpdate: () => ipcRenderer.invoke(CHANNELS.installUpdate),
   onStateChanged: (callback) => {
     if (typeof callback !== 'function') throw new TypeError('State listener must be a function')
     const listener = (_event, payload) => callback(payload)

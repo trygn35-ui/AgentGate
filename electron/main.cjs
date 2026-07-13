@@ -43,6 +43,7 @@ const {
   GatewayStoreSchema,
   defaultGatewayStore,
 } = require('./services/gateway-service.cjs')
+const { UpdateService } = require('./services/update-service.cjs')
 const { CHANNELS, registerIpcHandlers } = require('./services/ipc.cjs')
 
 const APP_NAME = 'Keydeck'
@@ -85,6 +86,8 @@ let services
 let quitBarrierComplete = false
 let quitBarrierPromise
 let quitting = false
+/** 退出屏障完成后是否改为安装更新，而不是普通退出。 */
+let installUpdateOnQuit = false
 /** 开机自启拉起的实例带 --silent：直接驻留托盘，不显示窗口。 */
 const silentLaunch = process.argv.includes(SILENT_LAUNCH_FLAG)
 
@@ -188,6 +191,18 @@ function createServices() {
     },
   })
 
+  const updateService = new UpdateService({
+    app,
+    shell,
+    onChanged: (state) => {
+      if (!mainWindow || mainWindow.isDestroyed()) return
+      mainWindow.webContents.send(CHANNELS.stateChanged, {
+        type: 'update-state-changed',
+        update: state,
+      })
+    },
+  })
+
   return {
     profileService,
     clientService,
@@ -197,6 +212,7 @@ function createServices() {
     gatewayService,
     settingsService,
     requestMonitor,
+    updateService,
     windowStateStore,
   }
 }
@@ -362,7 +378,15 @@ if (!hasSingleInstanceLock) {
     await services.requestMonitor.initialize()
     services.gatewayService.setExperimentalToolBridgeEnabled?.(settings.experimentalToolBridge)
     await services.gatewayService.initialize({ start: settings.startGatewayOnLaunch })
-    registerIpcHandlers({ ipcMain, clipboard, ...services })
+    registerIpcHandlers({
+      ipcMain,
+      clipboard,
+      ...services,
+      requestUpdateInstall: () => {
+        installUpdateOnQuit = true
+        app.quit()
+      },
+    })
     // 无边框窗口的最小化/最大化/关闭；关闭沿用 close 事件里的托盘驻留判断。
     ipcMain.handle('keydeck:window-control', (_event, action) => {
       if (!mainWindow || mainWindow.isDestroyed()) return
@@ -400,6 +424,8 @@ app.on('before-quit', (event) => {
       tray?.destroy()
       tray = undefined
       quitBarrierComplete = true
+      // 网关已停止、客户端配置已恢复，此时安装更新才不会把客户端留在死掉的本地地址上。
+      if (installUpdateOnQuit && services?.updateService.quitAndInstall()) return
       app.quit()
     }
   })()

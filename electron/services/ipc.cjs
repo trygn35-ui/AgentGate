@@ -17,6 +17,9 @@ const CHANNELS = Object.freeze({
   startGateway: 'keydeck:start-gateway',
   stopGateway: 'keydeck:stop-gateway',
   updateSettings: 'keydeck:update-settings',
+  checkForUpdate: 'keydeck:check-for-update',
+  downloadUpdate: 'keydeck:download-update',
+  installUpdate: 'keydeck:install-update',
   stateChanged: 'keydeck:state-changed',
 })
 
@@ -53,6 +56,8 @@ function registerIpcHandlers({
   applyService,
   gatewayService,
   settingsService,
+  updateService,
+  requestUpdateInstall,
 }) {
   const getBootstrap = async () => {
     const [profiles, history] = await Promise.all([
@@ -102,6 +107,7 @@ function registerIpcHandlers({
       gateway,
       ...(settingsService ? { settings: settingsService.getPublicSettings() } : {}),
       ...(gatewayService.getActiveRequests ? { activeRequests: gatewayService.getActiveRequests() } : {}),
+      ...(updateService ? { update: updateService.getPublicState() } : {}),
     }
   }
 
@@ -212,6 +218,20 @@ function registerIpcHandlers({
   ipcMain.handle(CHANNELS.updateSettings, async (_event, patch) => {
     if (!settingsService) throw new Error('Application settings are unavailable')
     return settingsService.update(patch)
+  })
+  ipcMain.handle(CHANNELS.checkForUpdate, async () => {
+    if (!updateService) throw new Error('Update service is unavailable')
+    return updateService.check()
+  })
+  ipcMain.handle(CHANNELS.downloadUpdate, async () => {
+    if (!updateService) throw new Error('Update service is unavailable')
+    return updateService.download()
+  })
+  ipcMain.handle(CHANNELS.installUpdate, async () => {
+    if (!updateService) throw new Error('Update service is unavailable')
+    // 由主进程的退出屏障先停网关、恢复客户端配置，再安装。
+    requestUpdateInstall()
+    return { ok: true }
   })
 }
 

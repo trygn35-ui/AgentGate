@@ -111,10 +111,26 @@ pnpm dist
 执行 `pnpm dist` 后，最终交付文件整理在 `deliverables/`：
 
 ```text
-Keydeck-Portable-0.7.8-x64.exe
-Keydeck-Setup-0.7.8-x64.exe
-Keydeck-0.7.8-source.zip
-SHA256SUMS-0.7.8.txt
+Keydeck-Portable-0.8.0-x64.exe
+Keydeck-Setup-0.8.0-x64.exe
+Keydeck-Setup-0.8.0-x64.exe.blockmap
+Keydeck-0.8.0-source.zip
+latest.yml
+SHA256SUMS-0.8.0.txt
 ```
 
 当前构建没有商业代码签名证书，Windows SmartScreen 首次运行可能显示未知发布者。
+
+## 自动更新
+
+安装版（NSIS）通过 GitHub Releases 自动更新：设置页可检查更新、后台下载并重启安装。
+安装前会先停止网关并恢复客户端配置，因此更新不会把客户端留在失效的本地地址上。
+便携版无法就地替换自身，只提示新版本并引导到下载页。
+
+发布新版本时，Release 必须同时上传 `Keydeck-Setup-<版本>-x64.exe`、`latest.yml` 和
+`.blockmap`；缺少 `latest.yml` 时已安装的客户端无法发现新版本。
+
+```powershell
+pnpm dist       # 构建并打包，生成 latest.yml
+pnpm release    # 整理 deliverables/ 与校验和
+```

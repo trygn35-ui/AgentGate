@@ -39,6 +39,9 @@ export interface KeydeckController {
   startGateway: (settings: GatewayStartSettings) => Promise<void>;
   stopGateway: () => Promise<void>;
   updateSettings: (patch: Partial<AppSettings>) => Promise<void>;
+  checkForUpdate: () => Promise<void>;
+  downloadUpdate: () => Promise<void>;
+  installUpdate: () => Promise<void>;
 }
 
 /**
@@ -59,6 +62,7 @@ export function useKeydeckController(): KeydeckController {
       ...next,
       settings: next.settings ?? current.settings,
       activeRequests: next.activeRequests ?? current.activeRequests,
+      update: next.update ?? current.update,
     }));
   }, []);
   const [busy, setBusy] = useState<BusyAction | null>("load");
@@ -128,6 +132,10 @@ export function useKeydeckController(): KeydeckController {
     }
     if (event.type === "settings-changed") {
       setData((current) => ({ ...current, settings: event.settings }));
+      return;
+    }
+    if (event.type === "update-state-changed") {
+      setData((current) => ({ ...current, update: event.update }));
       return;
     }
     void refreshSilently();
@@ -467,6 +475,43 @@ export function useKeydeckController(): KeydeckController {
     }
   }
 
+  async function checkForUpdate(): Promise<void> {
+    if (!api.checkForUpdate) {
+      setToast({ kind: "error", message: "当前版本不支持在线更新" });
+      return;
+    }
+    try {
+      const state = await api.checkForUpdate();
+      setData((current) => ({ ...current, update: state }));
+      if (state.state === "up-to-date") {
+        setToast({ kind: "success", message: `已是最新版本 ${state.currentVersion}` });
+      } else if (state.state === "error") {
+        setToast({ kind: "error", message: state.message ?? "检查更新失败" });
+      }
+    } catch (error) {
+      setToast({ kind: "error", message: describeError(error) });
+    }
+  }
+
+  async function downloadUpdate(): Promise<void> {
+    if (!api.downloadUpdate) return;
+    try {
+      const state = await api.downloadUpdate();
+      setData((current) => ({ ...current, update: state }));
+    } catch (error) {
+      setToast({ kind: "error", message: describeError(error) });
+    }
+  }
+
+  async function installUpdate(): Promise<void> {
+    if (!api.installUpdate) return;
+    try {
+      await api.installUpdate();
+    } catch (error) {
+      setToast({ kind: "error", message: describeError(error) });
+    }
+  }
+
   return {
     data,
     busy,
@@ -490,5 +535,8 @@ export function useKeydeckController(): KeydeckController {
     startGateway,
     stopGateway,
     updateSettings,
+    checkForUpdate,
+    downloadUpdate,
+    installUpdate,
   };
 }
