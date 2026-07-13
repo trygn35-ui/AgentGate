@@ -199,21 +199,26 @@ button:focus-visible, input:focus-visible, select:focus-visible, [role="button"]
 .win-controls button:hover { color: var(--ink); background: var(--soft); }
 .win-controls button.win-close:hover { color: #fff; background: var(--bad); }
 
-.brand-mark { display: flex; align-items: center; gap: 10px; }
-.brand-glyph {
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  color: #FFFFFF;
-  background: linear-gradient(135deg, color-mix(in oklab, var(--accent) 70%, #F2D8C4), var(--accent));
-  border-radius: 8px;
-}
+.brand-mark { display: flex; align-items: center; }
 .brand-mark > strong {
   font-family: var(--serif);
-  font-size: 17px;
+  font-size: 19px;
   font-weight: 600;
   letter-spacing: .2px;
+}
+/* Steins;Gate 风格：G 单独反色，嵌在与文字反色的方块里 */
+.brand-g {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin: 0 2px;
+  vertical-align: -3px;
+  color: var(--accent);
+  background: var(--ink);
+  border-radius: 3px;
+  line-height: 1;
 }
 
 .top-nav { display: flex; align-items: stretch; gap: 2px; margin-left: 10px; }

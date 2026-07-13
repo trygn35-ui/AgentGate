@@ -1,11 +1,6 @@
-<svg width="96" height="96" viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <linearGradient id="brand" x1="12" y1="12" x2="84" y2="84" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#EBB08D"/>
-      <stop offset="1" stop-color="#D97757"/>
-    </linearGradient>
-  </defs>
-  <rect width="96" height="96" rx="24" fill="url(#brand)"/>
-  <text x="48" y="63" font-family="Georgia, 'Times New Roman', serif" font-size="42" font-weight="600"
-        fill="#FFFFFF" text-anchor="middle" letter-spacing="-1">A;G</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="112" height="112">
+  <rect width="512" height="512" rx="96" fill="#FFFFFF"/>
+  <rect x="56" y="56" width="400" height="400" fill="#12100E"/>
+  <text x="256" y="404" font-family="Georgia, 'Times New Roman', serif" font-size="400"
+        font-weight="600" fill="#D97757" text-anchor="middle">G</text>
 </svg>

@@ -1,4 +1,4 @@
-import { Activity, KeyRound, LayoutDashboard, Minus, Settings, ShieldCheck, Square, X, Zap } from "lucide-react";
+import { Activity, KeyRound, LayoutDashboard, Minus, Settings, ShieldCheck, Square, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, ReactElement } from "react";
 import { ActivityView } from "./components/ActivityView";
@@ -140,8 +140,7 @@ function App(): ReactElement {
     <div className="app-shell" onContextMenu={handleContextBack}>
       <header className="topbar">
         <div className="brand-mark" aria-label="Agent;Gate">
-          <span className="brand-glyph"><Zap size={15} strokeWidth={2.5} fill="currentColor" /></span>
-          <strong>Agent;Gate</strong>
+          <strong>Agent;<span className="brand-g">G</span>ate</strong>
         </div>
         <nav className="top-nav" aria-label="功能导航">
           {NAV_ITEMS.map((item) => (
