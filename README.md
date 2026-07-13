@@ -254,6 +254,29 @@ pnpm release     # 整理交付件与校验和
 
 技术栈：Electron + React + TypeScript。主进程负责全部文件写入与密钥处理，渲染进程没有文件系统权限。
 
+<details>
+<summary><code>pnpm dist</code> 报 <code>Cannot create symbolic link</code></summary>
+
+electron-builder 会下载并解压 `winCodeSign` 工具包（图标与版本信息要靠里面的 `rcedit` 写进 exe）。
+这个压缩包里含 macOS 的 dylib **符号链接**，而 Windows 上非管理员账户默认没有创建符号链接的权限，
+解压失败会直接中止构建。
+
+两种解法，任选其一：
+
+- 打开 Windows 的**开发者模式**（设置 → 系统 → 开发者选项），普通账户即可创建符号链接；
+- 或者手动把工具包解压到缓存目录，跳过 darwin 部分：
+
+  ```powershell
+  $cache = "$env:LOCALAPPDATA\electron-builder\Cache\winCodeSign"
+  # 从 electron-builder-binaries 下载 winCodeSign-2.6.0.7z 后：
+  7za x winCodeSign-2.6.0.7z "-o$cache\winCodeSign-2.6.0" '-x!darwin*' -y
+  ```
+
+不要用 `signAndEditExecutable: false` 绕过——那个开关会连 `rcedit` 一起关掉，
+打出来的 exe 会保留 Electron 自带的图标、`ProductName: Electron` 和版本号 33.x。
+
+</details>
+
 ## 致谢
 
 - [Electron](https://www.electronjs.org/) · [electron-builder](https://www.electron.build/) · [electron-updater](https://www.electron.build/auto-update)

@@ -306,6 +306,8 @@ async function createWindow({ silent = false } = {}) {
     ...(savedBounds ?? {}),
     show: false,
     title: APP_DISPLAY_NAME,
+    // 打包后任务栏图标取自 exe 的资源，开发时取不到——显式指定，两边一致
+    icon: path.join(__dirname, '..', 'assets', 'icon.ico'),
     backgroundColor: '#1C1A16',
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),

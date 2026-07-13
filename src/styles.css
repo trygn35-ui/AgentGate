@@ -62,9 +62,16 @@
   --tick-strong: rgba(90, 80, 60, .28);
   --grain: .025;
 
-  --serif: "EB Garamond", Georgia, "Times New Roman", serif;
-  /* 中日文字形。默认取雅黑；日文界面下换成 Yu Gothic（见文件下方的 html[lang="ja"]）。 */
+  /* 中日文字形。默认取雅黑；繁体换正黑、日文换 Yu Gothic（见文件下方的 html[lang]）。 */
   --cjk: "Microsoft YaHei UI", "Microsoft YaHei";
+  /*
+   * 三套拉丁字面（衬线 / 无衬线 / 等宽）共用同一套 CJK 字形。
+   *
+   * --serif 原本没有 CJK 回退，中文一路掉到泛型 serif——也就是宋体。于是标题、
+   * 方案名、弹窗标题的中文是宋体，而设置页（--sans）的中文是雅黑，同一个界面里
+   * 冒出两种中文字体。CJK 界面不该有三套中文字形，统一交给 --cjk。
+   */
+  --serif: "EB Garamond", Georgia, var(--cjk), "Times New Roman", serif;
   --sans: "IBM Plex Sans", var(--cjk), "Segoe UI", system-ui, sans-serif;
   /*
    * CJK 字体必须排在 monospace 泛型之前。
@@ -218,30 +225,53 @@ html[lang="zh"], html[lang="zh-TW"], html[lang="ja"] {
 @keyframes bar-in { from { transform: scaleY(0); } to { transform: scaleY(1); } }
 @keyframes breathe { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
 
-/* 辉光管翻转：新字从下滚入，落位时点火过冲一下再稳定 */
-@keyframes tube-in {
-  0% { transform: translateY(78%); opacity: 0; filter: blur(1.2px); }
-  70% { transform: translateY(0); opacity: 1; filter: blur(0); }
-  82% { text-shadow: var(--tube-ignite, var(--tube-glow)); }
-  100% { transform: translateY(0); opacity: 1; filter: blur(0); }
-}
-@keyframes tube-out {
-  from { transform: translateY(0); opacity: 1; filter: blur(0); }
-  to { transform: translateY(-78%); opacity: 0; filter: blur(1.2px); }
+/* 辉光管点火：数字滚动时辉光过冲一下，落位后收回常亮 */
+@keyframes tube-ignite {
+  0% { text-shadow: var(--tube-glow); }
+  70% { text-shadow: var(--tube-ignite, var(--tube-glow)); }
+  100% { text-shadow: var(--tube-glow); }
 }
 /* 文案切换（语言、网关状态、绑定方案）：轻微上浮 + 去焦，避免硬切 */
 @keyframes text-swap {
   from { opacity: 0; transform: translateY(3px); filter: blur(1.5px); }
   to { opacity: 1; transform: translateY(0); filter: blur(0); }
 }
-/* 读数变化：从下方顶入，比文案更利落 */
-@keyframes value-in {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
-}
 
 .swap-text { display: inline-block; animation: text-swap 260ms cubic-bezier(.2, .9, .25, 1) both; }
-.value-swap { animation: value-in 300ms cubic-bezier(.2, .9, .25, 1) both; }
+
+/*
+ * 滚轮数字。每个字位是一条竖直纸带，纸带上排着「旧字 → 随机数字 → 新字」，
+ * JS 用一次 transform 把纸带拉过窗口（见 RollingNumber.tsx）。
+ *
+ * 位移按纸带自身高度取百分比，所以纸带的每一格必须和窗口等高——.reel 与
+ * .reel-cell 的高度是一对，改一个必须改另一个。
+ */
+.rolling { font-variant-numeric: tabular-nums; }
+.reel-row { display: inline-flex; }
+.reel {
+  display: inline-block;
+  overflow: hidden;
+  height: 1.3em;
+  line-height: 1.3em;
+  vertical-align: bottom;
+}
+.reel-cell {
+  display: block;
+  height: 1.3em;
+  line-height: 1.3em;
+  text-align: center;
+}
+.reel-strip { display: block; will-change: transform; }
+
+/* 读屏软件读整串读数，不逐字位念 */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 
 /*
  * 世界线跃迁：只在切换主题的那一瞬给所有元素挂上颜色过渡。
@@ -381,17 +411,29 @@ code, .num, [data-num] { font-variant-numeric: tabular-nums; }
 
 /* 字标三件套：衬线 + 反色方块 + 粗横规 */
 .brand-mark {
+  /* 顶栏是 flex：不锁死就会被导航挤压，英文下导航更长，字标会被压成两行 */
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   justify-content: center;
   padding-bottom: 2px;
 }
 .brand-mark > strong {
+  white-space: nowrap;
   font-family: var(--serif);
   font-size: var(--fs-2xl);
   font-weight: 600;
   letter-spacing: .4px;
-  line-height: 1;
+  /*
+   * 高度写死，让 G 方块彻底退出布局。
+   *
+   * G 是个 23px 高的行内块，骑在 21px 的文字基线上——只要它还参与行盒计算，
+   * 行盒就会被撑到 28px，把整个字标连同下面的横规一起顶起来。给 strong 一个
+   * 固定高度、允许溢出绘制之后，方块想怎么挪都不再影响外部布局。
+   */
+  height: 24px;
+  line-height: 24px;
+  overflow: visible;
 }
 .brand-g {
   display: inline-flex;
@@ -400,7 +442,8 @@ code, .num, [data-num] { font-variant-numeric: tabular-nums; }
   width: 21px;
   height: 23px;
   margin: 0 1px;
-  vertical-align: -5px;
+  /* 只管 G 自己的高低，撑不出 strong 的固定高度 */
+  vertical-align: 2px;
   color: var(--paper);
   background: var(--rule);
   font-size: 19px;
@@ -673,22 +716,19 @@ code, .num, [data-num] { font-variant-numeric: tabular-nums; }
   color: var(--tube-tint, var(--accent-ink));
   text-shadow: var(--tube-glow);
 }
-.tube.dot { width: 11px; }
-.tube.blank { color: transparent; text-shadow: none; }
-
-/* 数字翻转：旧字向上滚出，新字从下方滚入，并在落位时点火一次。
-   两个字形同时存在于管内，所以必须绝对定位叠放。 */
-.tube-glyph {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  font: inherit;
-  font-weight: inherit;
+/*
+ * 管内的滚筒撑满整管。小数点不再单独占一个窄管——管子一律等宽，点只是
+ * 管里的一个字符，否则一有小数点整排管子的宽度就会跟着变。
+ */
+.tube .reel,
+.tube .reel-cell {
+  width: 100%;
+  height: 32px;          /* = 管高 34px − 上下各 1px 边框 */
+  line-height: 32px;
 }
-.tube-glyph.in { animation: tube-in 340ms cubic-bezier(.2, .9, .25, 1) both; }
-.tube-glyph.out { animation: tube-out 340ms cubic-bezier(.2, .9, .25, 1) both; }
-.tube.blank .tube-glyph { animation: none; }
+/* 落位时点一次火：滚筒在滚的这一刻辉光过冲，然后收回常亮 */
+.tube .reel[data-rolling] { animation: tube-ignite 420ms ease-out; }
+
 /* 未点亮的阴极——辉光管的头号特征 */
 .tube::before {
   content: attr(data-ghost);
@@ -813,6 +853,10 @@ code, .num, [data-num] { font-variant-numeric: tabular-nums; }
   left: 0;
   right: -40px;
   z-index: 50;
+  /* max-height 由 JS 按窗口现算（见 OverviewView 的 PickerMenu）；
+     滚动条被全局规则藏起来了，这里只负责能滚。 */
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 4px;
   background: var(--overlay);
   border: 1px solid var(--line-strong);

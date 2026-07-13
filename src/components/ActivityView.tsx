@@ -11,6 +11,7 @@ import { useI18n } from "../i18n";
 import type { Messages } from "../i18n";
 import { formatDuration, formatTokenCount } from "../lib/format";
 import { cacheRateTier } from "../lib/health";
+import { RollingNumber } from "./RollingNumber";
 import type { ActiveRequest, ClientTarget } from "../types";
 import type { RequestFilter } from "../ui-types";
 
@@ -211,18 +212,19 @@ export function ActivityView({ requests }: ActivityViewProps): ReactElement {
                     <small>{subline}</small>
                   </span>
                   <span className="request-tokens">
-                    <code className="tok-in">↓{formatTokenCount(tokens?.inputTokens)}</code>
-                    <code className="tok-out">↑{formatTokenCount(tokens?.outputTokens)}</code>
+                    <RollingNumber className="tok-in" value={`↓${formatTokenCount(tokens?.inputTokens)}`} />
+                    <RollingNumber className="tok-out" value={`↑${formatTokenCount(tokens?.outputTokens)}`} />
                     <small>CACHED {formatTokenCount(tokens?.cachedTokens)}</small>
                   </span>
                   <span className="cache-rate">
-                    <code className={cacheRateTier(rate)}>
-                      {rate === undefined ? "———" : (rate / 100).toFixed(3)}
-                    </code>
+                    <RollingNumber
+                      className={cacheRateTier(rate)}
+                      value={rate === undefined ? "———" : (rate / 100).toFixed(3)}
+                    />
                     <small>{m.stream.cache}</small>
                   </span>
                   <span className="request-timing">
-                    <code>{formatDuration(elapsed)}</code>
+                    <RollingNumber value={formatDuration(elapsed)} />
                     <small className={latencyTier(firstLatency)}>{firstLabel} {formatDuration(firstLatency)}</small>
                   </span>
                   <strong className={`request-state-label ${state.tint}`}>{state.label}</strong>

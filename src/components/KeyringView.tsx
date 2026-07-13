@@ -20,6 +20,7 @@ import { CLIENT_META, PROTOCOL_META } from "../config";
 import { useI18n } from "../i18n";
 import type { Messages } from "../i18n";
 import { cacheRateTier, getEndpointMetrics, getHealthBarTone, LIMITED_LATENCY_MS } from "../lib/health";
+import { RollingNumber } from "./RollingNumber";
 import type { EndpointMetrics } from "../lib/health";
 import { formatTokenCount, relativeTime } from "../lib/format";
 import { useFlipList } from "../lib/useFlipList";
@@ -345,24 +346,19 @@ export function KeyringView({
                       </span>
                     </span>
                     <span className="keyring-usage">
-                      <code key={profile.tokenUsageTotal ?? 0} className="value-swap">
-                        {formatTokenCount(profile.tokenUsageTotal ?? 0)}
-                      </code>
+                      <RollingNumber value={formatTokenCount(profile.tokenUsageTotal ?? 0)} />
                       <small>{m.keys.tokens}</small>
                     </span>
                     <span className="keyring-usage">
-                      <code className={cacheRateTier(cumulativeCacheRate(profile))}>
-                        {cumulativeCacheRate(profile) === undefined
-                          ? "———"
-                          : cumulativeCacheRate(profile)?.toFixed(3)}
-                      </code>
+                      <RollingNumber
+                        className={cacheRateTier(cumulativeCacheRate(profile))}
+                        value={cumulativeCacheRate(profile)?.toFixed(3) ?? "———"}
+                      />
                       <small>{m.keys.cache}</small>
                     </span>
                     <HealthBars endpoint={activeEndpoint} label={m.keys.awaitingSamples} />
                     <span className="keyring-stat">
-                      <strong key={summary.label} className={`${summary.className} value-swap`}>
-                        {summary.label}
-                      </strong>
+                      <RollingNumber as="strong" className={summary.className} value={summary.label} />
                       <small>
                         {metrics.sampleCount > 0
                           ? fill(m.keys.statLine, {

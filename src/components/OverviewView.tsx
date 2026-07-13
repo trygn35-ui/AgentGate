@@ -1,6 +1,6 @@
 import { ArrowRight } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import type { ReactElement } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { CLIENT_META, CLIENT_TARGET_ORDER, PROTOCOL_META } from "../config";
 import { useI18n } from "../i18n";
 import {
@@ -20,6 +20,7 @@ import type {
   Profile,
 } from "../types";
 import { NixieTubes } from "./NixieTubes";
+import { RollingNumber } from "./RollingNumber";
 
 const HEALTH_DOT: Record<HealthState, string> = {
   healthy: "dot-good",
@@ -27,6 +28,40 @@ const HEALTH_DOT: Record<HealthState, string> = {
   unhealthy: "dot-bad",
   unknown: "dot-unknown",
 };
+
+/** 菜单底部要让开的空间：24px 页脚 + 一点呼吸。 */
+const PICKER_GUTTER = 34;
+/** 再挤也留这么高，否则菜单小到没法用，不如让它压住页脚。 */
+const PICKER_MIN = 132;
+
+/**
+ * 方案菜单：最大高度按「卡片下方在当前窗口里还剩多少」现算，内部滚动。
+ *
+ * 写死一个 max-height 没用——窗口高度是用户随便拖的，卡片本身的 y 坐标又随
+ * 仪表盘内容浮动。所以挂载时量一次，窗口尺寸变了再量。
+ */
+function PickerMenu({ label, children }: { label: string; children: ReactNode }): ReactElement {
+  const ref = useRef<HTMLDivElement>(null);
+  const [maxHeight, setMaxHeight] = useState<number>();
+
+  useLayoutEffect(() => {
+    function measure(): void {
+      const node = ref.current;
+      if (!node) return;
+      const top = node.getBoundingClientRect().top;
+      setMaxHeight(Math.max(PICKER_MIN, window.innerHeight - top - PICKER_GUTTER));
+    }
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, []);
+
+  return (
+    <div className="picker-menu" role="menu" aria-label={label} ref={ref} style={{ maxHeight }}>
+      {children}
+    </div>
+  );
+}
 
 interface OverviewViewProps {
   profiles: Profile[];
@@ -176,13 +211,11 @@ export function OverviewView({
 
           <div className="meter-cell">
             <div className="meter-label">C A C H E &nbsp; H I T</div>
-            {/* key 绑定读数：只有数值真的变了才重挂载，播一次滚入动画 */}
-            <div
-              key={cacheText}
-              className={`meter-plain value-swap ${cacheRate === undefined ? "dim" : ""}`}
-            >
-              {cacheText}
-            </div>
+            <RollingNumber
+              as="div"
+              className={`meter-plain ${cacheRate === undefined ? "dim" : ""}`}
+              value={cacheText}
+            />
             <div className="meter-sub">{fill(m.overview.lastHour, { count: requests.length })}</div>
           </div>
 
@@ -190,12 +223,11 @@ export function OverviewView({
 
           <div className="meter-cell">
             <div className="meter-label">T O K E N S</div>
-            <div
-              key={tokenText}
-              className={`meter-plain value-swap ${tokenToday === 0 ? "dim" : ""}`}
-            >
-              {tokenText}
-            </div>
+            <RollingNumber
+              as="div"
+              className={`meter-plain ${tokenToday === 0 ? "dim" : ""}`}
+              value={tokenText}
+            />
             <div className="meter-sub">{m.overview.todayResets}</div>
           </div>
         </section>
@@ -260,7 +292,7 @@ export function OverviewView({
                     </span>
                   </button>
                   {open && (
-                    <div className="picker-menu" role="menu" aria-label={m.overview.worldLines}>
+                    <PickerMenu label={m.overview.worldLines}>
                       {options.length > 0 ? options.map((option) => {
                         const current = route?.profileId === option.id;
                         const tag = current
@@ -296,7 +328,7 @@ export function OverviewView({
                           <small />
                         </button>
                       )}
-                    </div>
+                    </PickerMenu>
                   )}
                 </div>
               );
