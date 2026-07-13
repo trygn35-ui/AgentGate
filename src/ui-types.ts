@@ -1,7 +1,5 @@
 export type View = "overview" | "keyring" | "activity" | "settings";
 
-export type FeedTab = "requests" | "history";
-
 export type RequestFilter = "all" | "active" | "completed" | "failed";
 
 export type BusyAction =
@@ -12,7 +10,6 @@ export type BusyAction =
   | "test"
   | "probe"
   | "delete"
-  | "undo"
   | "gateway-start"
   | "gateway-stop"
   | "settings";
@@ -20,5 +17,4 @@ export type BusyAction =
 export interface ToastState {
   kind: "success" | "error" | "info";
   message: string;
-  undoId?: string;
 }

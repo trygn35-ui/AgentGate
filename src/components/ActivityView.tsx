@@ -3,15 +3,14 @@ import {
   CheckCircle2,
   CircleDot,
   LoaderCircle,
-  RotateCcw,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { ReactElement } from "react";
 import { CLIENT_META } from "../config";
-import { formatDateTime, formatDuration, formatTokenCount } from "../lib/format";
+import { formatDuration, formatTokenCount } from "../lib/format";
 import { cacheRateTier } from "../lib/health";
-import type { ActiveRequest, ClientTarget, HistoryEntry } from "../types";
-import type { FeedTab, RequestFilter } from "../ui-types";
+import type { ActiveRequest, ClientTarget } from "../types";
+import type { RequestFilter } from "../ui-types";
 
 const CLOCK_FORMATTER = new Intl.DateTimeFormat("zh-CN", {
   hour: "2-digit",
@@ -104,29 +103,14 @@ function RequestStateIcon({ meta }: { meta: RequestMeta }): ReactElement {
 
 interface ActivityViewProps {
   requests: ActiveRequest[];
-  history: HistoryEntry[];
-  busy: boolean;
-  busyId?: string;
-  feedTab: FeedTab;
-  onFeedTabChange: (tab: FeedTab) => void;
-  onUndo: (id: string) => void;
 }
 
 /**
- * 动态页：实时请求与切换记录两个信息流。
+ * 动态页：网关转发的实时请求流。
  *
- * 请求流展示网关转发的进行中与最近完成请求（含 Token 与时延指标），
- * 切换记录流展示配置变更历史并提供可撤销入口。
+ * 展示进行中与最近完成的请求，含模型、Token、缓存率与时延指标。
  */
-export function ActivityView({
-  requests,
-  history,
-  busy,
-  busyId,
-  feedTab,
-  onFeedTabChange,
-  onUndo,
-}: ActivityViewProps): ReactElement {
+export function ActivityView({ requests }: ActivityViewProps): ReactElement {
   const [filter, setFilter] = useState<RequestFilter>("all");
   const [now, setNow] = useState(() => Date.now());
   const activeCount = requests.filter(isActive).length;
@@ -136,32 +120,21 @@ export function ActivityView({
   );
 
   useEffect(() => {
-    if (feedTab !== "requests" || activeCount === 0) return undefined;
+    if (activeCount === 0) return undefined;
     const timer = window.setInterval(() => setNow(Date.now()), 300);
     return () => window.clearInterval(timer);
-  }, [activeCount, feedTab]);
+  }, [activeCount]);
 
   return (
     <main className="page-scroll" aria-label="动态">
       <div className="page-inner">
         <div className="section-head rise" style={{ alignItems: "center" }}>
           <h1>动态</h1>
-          <div className="feed-tabs" role="radiogroup" aria-label="动态类型">
-            {([["requests", "实时请求"], ["history", "切换记录"]] as Array<[FeedTab, string]>).map(([value, label]) => (
-              <button
-                type="button"
-                role="radio"
-                aria-checked={feedTab === value}
-                className={feedTab === value ? "active" : ""}
-                key={value}
-                onClick={() => onFeedTabChange(value)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+          <span className="head-note">
+            {activeCount > 0 ? `${activeCount} 个活跃请求` : "当前空闲"} · 保留最近 100 条
+          </span>
           <span style={{ marginLeft: "auto" }} />
-          {feedTab === "requests" && (
+          {(
             <div className="req-filters" role="radiogroup" aria-label="请求筛选">
               {([
                 ["all", "全部"],
@@ -184,9 +157,8 @@ export function ActivityView({
           )}
         </div>
 
-        {feedTab === "requests" && (
-          <div>
-            {visibleRequests.map((request, index) => {
+        <div>
+          {visibleRequests.map((request, index) => {
               const meta = REQUEST_META[request.state];
               const startedAt = new Date(request.startedAt).getTime();
               const elapsed = request.durationMs ?? (
@@ -247,60 +219,14 @@ export function ActivityView({
                 </article>
               );
             })}
-            {visibleRequests.length === 0 && (
-              <p className="feed-empty">
-                {requests.length === 0
-                  ? "还没有请求记录。网关收到请求后会在这里即时显示，并保留最近 100 条。"
-                  : "没有符合筛选条件的请求。"}
-              </p>
-            )}
-          </div>
-        )}
-
-        {feedTab === "history" && (
-          <div>
-            {history.map((entry, index) => (
-              <article
-                className="event-row with-undo"
-                key={entry.id}
-                style={{ animationDelay: `${Math.min(index, 12) * 40}ms` }}
-              >
-                <span className={`event-icon ${entry.success ? "good" : "bad"}`}>
-                  {entry.success ? <CheckCircle2 size={15} /> : <AlertCircle size={15} />}
-                </span>
-                <time>{formatDateTime(entry.createdAt)}</time>
-                <span className="event-main">
-                  <span className="event-title">
-                    <strong>{entry.profileName}</strong>
-                    <small>→ {entry.targets.map((target) => CLIENT_META[target].short).join("、")}</small>
-                    {entry.source === "auto" && <small className="tag-auto">自动</small>}
-                  </span>
-                  {entry.message && <small className="event-message">{entry.message}</small>}
-                </span>
-                <strong className={`event-result ${entry.success ? "good" : "bad"}`}>
-                  {entry.success ? "成功" : "失败"}
-                </strong>
-                <button
-                  type="button"
-                  className="undo-pill"
-                  disabled={!entry.canUndo || busy}
-                  title={entry.canUndo
-                    ? "恢复本次切换前的配置"
-                    : entry.connectionMode === "gateway"
-                      ? "网关路由切换无需撤销，可直接选择其他方案"
-                      : "该记录已不可撤销"}
-                  onClick={() => onUndo(entry.id)}
-                >
-                  {busyId === entry.id
-                    ? <LoaderCircle size={11} className="spin" />
-                    : <RotateCcw size={11} />}
-                  撤销
-                </button>
-              </article>
-            ))}
-            {history.length === 0 && <p className="feed-empty">还没有切换记录。</p>}
-          </div>
-        )}
+          {visibleRequests.length === 0 && (
+            <p className="feed-empty">
+              {requests.length === 0
+                ? "还没有请求记录。网关收到请求后会在这里即时显示，并保留最近 100 条。"
+                : "没有符合筛选条件的请求。"}
+            </p>
+          )}
+        </div>
       </div>
     </main>
   );

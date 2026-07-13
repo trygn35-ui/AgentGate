@@ -2,11 +2,13 @@ import {
   AlertCircle,
   Check,
   CheckCircle2,
+  ChevronsUpDown,
   Circle,
   Eye,
   EyeOff,
   LoaderCircle,
   Plus,
+  RefreshCw,
   Trash2,
   X,
   Zap,
@@ -32,6 +34,10 @@ import { ConfirmDialog } from "./ConfirmDialog";
 interface ProfileEditorProps {
   profile?: Profile;
   busy: boolean;
+  /** 正在识别模型。 */
+  discovering?: boolean;
+  /** 识别模型：用当前 Key 请求上游模型列表；返回最新可用模型。 */
+  onDiscoverModels?: () => Promise<string[] | undefined>;
   onClose: () => void;
   onSave: (input: SaveProfileInput, applyAfter: boolean) => Promise<void>;
 }
@@ -144,6 +150,8 @@ function endpointStatus(endpoint?: ProfileEndpoint): { text: string; className: 
 export function ProfileEditor({
   profile,
   busy,
+  discovering,
+  onDiscoverModels,
   onClose,
   onSave,
 }: ProfileEditorProps): ReactElement {
@@ -152,9 +160,37 @@ export function ProfileEditor({
   const [showKey, setShowKey] = useState(false);
   const [error, setError] = useState<string>();
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [models, setModels] = useState<string[]>(() => profile?.availableModels ?? []);
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const dialogRef = useRef<HTMLFormElement>(null);
+  const modelFieldRef = useRef<HTMLDivElement>(null);
   const compatibleTargets = PROTOCOL_META[form.protocol].compatible;
   const hasUnsavedChanges = JSON.stringify(form) !== JSON.stringify(initialForm.current);
+  // 已选模型也留在列表里，选过之后仍能换成其他模型。
+  const modelOptions = models.filter((model) => (
+    !form.model.trim()
+    || model === form.model
+    || model.toLocaleLowerCase().includes(form.model.trim().toLocaleLowerCase())
+  ));
+
+  useEffect(() => {
+    if (!modelMenuOpen) return undefined;
+    function handlePointerDown(event: MouseEvent): void {
+      if (!(event.target instanceof Node)) return;
+      if (modelFieldRef.current?.contains(event.target)) return;
+      setModelMenuOpen(false);
+    }
+    window.addEventListener("mousedown", handlePointerDown);
+    return () => window.removeEventListener("mousedown", handlePointerDown);
+  }, [modelMenuOpen]);
+
+  async function discoverModels(): Promise<void> {
+    if (!onDiscoverModels || discovering) return;
+    const discovered = await onDiscoverModels();
+    if (!discovered) return;
+    setModels(discovered);
+    setModelMenuOpen(discovered.length > 0);
+  }
 
   function requestClose(): void {
     if (busy) return;
@@ -486,26 +522,83 @@ export function ProfileEditor({
                   </button>
                 </div>
               </label>
-              <label className="field-block">
+              <div className="field-block">
                 <span className="field-name">
                   模型 ID
-                  <small>{profile?.availableModels.length ?? 0} 个可用</small>
+                  <button
+                    type="button"
+                    className="link-button"
+                    title="用当前 Key 请求上游模型列表"
+                    disabled={busy || discovering}
+                    onClick={() => void discoverModels()}
+                  >
+                    {discovering
+                      ? <LoaderCircle size={11} className="spin" />
+                      : <RefreshCw size={11} />}
+                    识别模型
+                  </button>
                 </span>
-                <input
-                  aria-label="模型 ID"
-                  className="mono"
-                  list="available-model-options"
-                  value={form.model}
-                  onChange={(event) => update("model", event.target.value)}
-                  placeholder="claude-sonnet-4-5"
-                  spellCheck={false}
-                />
-                <datalist id="available-model-options">
-                  {profile?.availableModels.map((model) => (
-                    <option value={model} key={model} />
-                  ))}
-                </datalist>
-              </label>
+                <div className="model-field" ref={modelFieldRef}>
+                  <input
+                    aria-label="模型 ID"
+                    className="mono"
+                    role="combobox"
+                    aria-expanded={modelMenuOpen}
+                    aria-autocomplete="list"
+                    value={form.model}
+                    onChange={(event) => {
+                      update("model", event.target.value);
+                      setModelMenuOpen(true);
+                    }}
+                    onFocus={() => setModelMenuOpen(true)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape" && modelMenuOpen) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        setModelMenuOpen(false);
+                      }
+                    }}
+                    placeholder="claude-sonnet-4-5"
+                    spellCheck={false}
+                    autoComplete="off"
+                  />
+                  <button
+                    type="button"
+                    className="model-toggle"
+                    aria-label={modelMenuOpen ? "收起模型列表" : "展开模型列表"}
+                    title={models.length > 0 ? `${models.length} 个可用模型` : "先点击识别模型"}
+                    onClick={() => setModelMenuOpen((open) => !open)}
+                  >
+                    <ChevronsUpDown size={13} />
+                  </button>
+                  {modelMenuOpen && (
+                    <div className="model-menu" role="listbox" aria-label="可用模型">
+                      {modelOptions.length > 0 ? modelOptions.map((model) => (
+                        <button
+                          type="button"
+                          role="option"
+                          aria-selected={model === form.model}
+                          className={`model-option ${model === form.model ? "current" : ""}`}
+                          key={model}
+                          onClick={() => {
+                            update("model", model);
+                            setModelMenuOpen(false);
+                          }}
+                        >
+                          <code>{model}</code>
+                          {model === form.model && <Check size={12} />}
+                        </button>
+                      )) : (
+                        <p className="model-menu-empty">
+                          {models.length === 0
+                            ? "还没有识别到模型，点击上方“识别模型”。"
+                            : "没有匹配的模型，清空输入查看全部。"}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
             {form.protocol === "anthropic" && (
               <div className="field-block" style={{ marginTop: 12 }}>

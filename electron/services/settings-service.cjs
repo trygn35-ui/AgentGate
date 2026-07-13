@@ -2,6 +2,7 @@ const { z } = require('zod')
 const { SerialExecutor } = require('./storage.cjs')
 
 const THEME_VALUES = ['system', 'light', 'dark']
+const SILENT_LAUNCH_FLAG = '--silent'
 
 const SettingsSchema = z.object({
   version: z.literal(1),
@@ -79,16 +80,23 @@ class SettingsService {
     })
   }
 
+  /**
+   * 注册或撤销开机自启。
+   *
+   * 开机自启带 `--silent`：Windows 登录时拉起的实例直接驻留托盘，不弹出窗口；
+   * 用户手动启动（无此参数）仍然正常显示界面。
+   */
   _applyLaunchAtLogin(enabled) {
     this.app.setLoginItemSettings({
       openAtLogin: enabled,
       path: this.executablePath,
-      args: [],
+      args: enabled ? [SILENT_LAUNCH_FLAG] : [],
     })
   }
 }
 
 module.exports = {
+  SILENT_LAUNCH_FLAG,
   SettingsSchema,
   SettingsPatchSchema,
   defaultSettings,

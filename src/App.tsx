@@ -13,7 +13,7 @@ import { APP_VERSION, DEFAULT_SETTINGS } from "./config";
 import { useKeydeckController } from "./hooks/useKeydeckController";
 import { api, isDesktop } from "./lib/api";
 import type { Profile, SaveProfileInput } from "./types";
-import type { FeedTab, View } from "./ui-types";
+import type { View } from "./ui-types";
 
 interface EditorState {
   open: boolean;
@@ -36,7 +36,6 @@ function isContextMenuTargetInteractive(target: EventTarget | null): boolean {
 function App(): ReactElement {
   const controller = useKeydeckController();
   const [view, setView] = useState<View>("overview");
-  const [feedTab, setFeedTab] = useState<FeedTab>("requests");
   const [editor, setEditor] = useState<EditorState>({ open: false });
   const [pendingDelete, setPendingDelete] = useState<Profile>();
   const settings = controller.data.settings ?? DEFAULT_SETTINGS;
@@ -50,7 +49,6 @@ function App(): ReactElement {
   const routeCount = gateway.routes
     .filter((route) => controller.data.profiles.some((profile) => profile.id === route.profileId))
     .length;
-  const toastUndoId = controller.toast?.undoId;
 
   useEffect(() => {
     if (settings.theme === "system") document.documentElement.removeAttribute("data-theme");
@@ -119,8 +117,7 @@ function App(): ReactElement {
     setView("overview");
   }
 
-  function goActivity(tab: FeedTab): void {
-    setFeedTab(tab);
+  function goActivity(): void {
     setView("activity");
   }
 
@@ -210,7 +207,6 @@ function App(): ReactElement {
           clients={controller.data.clients}
           gateway={gateway}
           activeRequestCount={activeRequests.length}
-          history={controller.data.history}
           busy={Boolean(controller.busy)}
           onApply={(id, target) => void controller.applyProfile(id, [target])}
           onGoActivity={goActivity}
@@ -239,17 +235,7 @@ function App(): ReactElement {
           onRetry={() => void controller.refresh()}
         />
       )}
-      {view === "activity" && (
-        <ActivityView
-          requests={requestRecords}
-          history={controller.data.history}
-          busy={Boolean(controller.busy)}
-          busyId={controller.busyId}
-          feedTab={feedTab}
-          onFeedTabChange={setFeedTab}
-          onUndo={(id) => void controller.undo(id)}
-        />
-      )}
+      {view === "activity" && <ActivityView requests={requestRecords} />}
       {view === "settings" && (
         <SettingsView
           settings={settings}
@@ -271,6 +257,10 @@ function App(): ReactElement {
         <ProfileEditor
           profile={editor.profile}
           busy={controller.busy === "save"}
+          discovering={controller.busy === "test" && controller.busyId === editor.profile?.id}
+          onDiscoverModels={editor.profile
+            ? () => controller.testProfile(editor.profile!.id)
+            : undefined}
           onClose={() => setEditor({ open: false })}
           onSave={handleSave}
         />
@@ -288,11 +278,7 @@ function App(): ReactElement {
       )}
 
       {controller.toast && (
-        <Toast
-          toast={controller.toast}
-          onClose={() => controller.setToast(undefined)}
-          onUndo={toastUndoId ? () => void controller.undo(toastUndoId) : undefined}
-        />
+        <Toast toast={controller.toast} onClose={() => controller.setToast(undefined)} />
       )}
     </div>
   );

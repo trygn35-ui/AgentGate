@@ -66,7 +66,7 @@ describe('SettingsService', () => {
     expect(app.setLoginItemSettings).toHaveBeenLastCalledWith({
       openAtLogin: true,
       path: 'D:\\Keydeck.exe',
-      args: [],
+      args: ['--silent'],
     })
     expect(onChanged).toHaveBeenCalledWith(result)
   })
@@ -81,7 +81,7 @@ describe('SettingsService', () => {
     store.write.mockRejectedValueOnce(new Error('disk full'))
     await expect(service.update({ launchAtLogin: true })).rejects.toThrow('disk full')
     expect(app.setLoginItemSettings.mock.calls.slice(-2)).toEqual([
-      [{ openAtLogin: true, path: 'D:\\Keydeck.exe', args: [] }],
+      [{ openAtLogin: true, path: 'D:\\Keydeck.exe', args: ['--silent'] }],
       [{ openAtLogin: false, path: 'D:\\Keydeck.exe', args: [] }],
     ])
   })

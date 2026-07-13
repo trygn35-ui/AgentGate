@@ -1,17 +1,14 @@
-import { AlertCircle, ArrowRight, CheckCircle2, ChevronsUpDown } from "lucide-react";
+import { ArrowRight, ChevronsUpDown } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import { CLIENT_META, CLIENT_TARGET_ORDER, PROTOCOL_META } from "../config";
-import { formatDateTime } from "../lib/format";
 import type {
   ClientStatus,
   ClientTarget,
   GatewayState,
   HealthState,
-  HistoryEntry,
   Profile,
 } from "../types";
-import type { FeedTab } from "../ui-types";
 
 const HEALTH_DOT: Record<HealthState, string> = {
   healthy: "dot-good",
@@ -25,10 +22,9 @@ interface OverviewViewProps {
   clients: ClientStatus[];
   gateway: GatewayState;
   activeRequestCount: number;
-  history: HistoryEntry[];
   busy: boolean;
   onApply: (id: string, target: ClientTarget) => void;
-  onGoActivity: (tab: FeedTab) => void;
+  onGoActivity: () => void;
 }
 
 function healthTag(profile: Profile): { text: string; className: string } {
@@ -40,7 +36,7 @@ function healthTag(profile: Profile): { text: string; className: string } {
 }
 
 /**
- * 概览页：网关状态标题、四张客户端卡片和最近切换。
+ * 概览页：网关状态标题与四张客户端卡片。
  *
  * 点击客户端卡片弹出适配方案菜单，选择后立即切换该客户端的网关路由。
  */
@@ -49,7 +45,6 @@ export function OverviewView({
   clients,
   gateway,
   activeRequestCount,
-  history,
   busy,
   onApply,
   onGoActivity,
@@ -114,7 +109,7 @@ export function OverviewView({
             <button
               type="button"
               className={`live-link ${activeRequestCount > 0 ? "live" : ""}`}
-              onClick={() => onGoActivity("requests")}
+              onClick={onGoActivity}
             >
               <i />
               {activeRequestCount > 0 ? `${activeRequestCount} 个活跃请求` : "当前空闲"}
@@ -223,33 +218,6 @@ export function OverviewView({
           </div>
         </section>
 
-        <section aria-label="最近切换" className="rise-2" style={{ marginTop: 30 }}>
-          <div className="section-head">
-            <span className="kicker">RECENT</span>
-            <h2>最近切换</h2>
-            <button type="button" className="text-link" onClick={() => onGoActivity("history")}>
-              全部记录<ArrowRight size={12} />
-            </button>
-          </div>
-          <div>
-            {history.slice(0, 3).map((entry, index) => (
-              <div className="event-row" key={entry.id} style={{ animationDelay: `${index * 40}ms` }}>
-                <span className={`event-icon ${entry.success ? "good" : "bad"}`}>
-                  {entry.success ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
-                </span>
-                <time>{formatDateTime(entry.createdAt)}</time>
-                <span className="event-main event-title">
-                  <strong>{entry.profileName}</strong>
-                  <small>→ {entry.targets.map((target) => CLIENT_META[target].short).join("、")}</small>
-                </span>
-                <small className={`event-result ${entry.success ? "good" : "bad"}`}>
-                  {entry.success ? "成功" : "失败"}
-                </small>
-              </div>
-            ))}
-            {history.length === 0 && <p className="feed-empty">还没有切换记录。</p>}
-          </div>
-        </section>
       </div>
     </main>
   );

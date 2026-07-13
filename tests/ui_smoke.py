@@ -73,12 +73,13 @@ with sync_playwright() as playwright:
     page.keyboard.press("Escape")
     page.get_by_role("heading", name="密钥", exact=True).wait_for()
 
-    # 动态：实时请求与切换记录（活跃请求徽标会并入按钮可访问名，不能精确匹配）
+    # 动态：实时请求流（活跃请求徽标会并入按钮可访问名，不能精确匹配）
     page.get_by_role("button", name="动态").click()
     page.get_by_role("heading", name="动态", exact=True).wait_for()
     assert page.locator(".request-row").count() == 3
-    page.get_by_role("radio", name="切换记录", exact=True).click()
-    assert page.locator(".event-row.with-undo").count() == 1
+    page.get_by_role("radio", name="异常", exact=True).click()
+    assert page.locator(".request-row").count() == 1
+    page.get_by_role("radio", name="全部", exact=True).click()
 
     # 设置
     page.get_by_role("button", name="设置", exact=True).click()

@@ -56,8 +56,8 @@ export function SettingsView({ settings, busy, onChange }: SettingsViewProps): R
         </div>
         <div className="settings-card rise-1">
           <SettingToggle
-            title="开机自启"
-            description="登录 Windows 后自动启动 Keydeck"
+            title="开机自启（静默）"
+            description="登录 Windows 后自动启动并直接驻留托盘，不弹出窗口；手动启动仍正常显示"
             checked={settings.launchAtLogin}
             disabled={busy}
             onChange={(launchAtLogin) => onChange({ launchAtLogin })}

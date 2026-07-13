@@ -14,7 +14,6 @@ import type {
 import type { BusyAction, ToastState } from "../ui-types";
 
 const DEFAULT_TOAST_DURATION_MS = 4_200;
-const UNDO_TOAST_DURATION_MS = 8_000;
 
 export interface KeydeckController {
   data: BootstrapData;
@@ -28,7 +27,7 @@ export interface KeydeckController {
   duplicateProfile: (profile: Profile) => Promise<Profile | undefined>;
   reorderProfiles: (ids: string[]) => Promise<void>;
   applyProfile: (id: string, targets?: ClientTarget[]) => Promise<void>;
-  testProfile: (id: string) => Promise<void>;
+  testProfile: (id: string) => Promise<string[] | undefined>;
   checkProfileHealth: (id: string) => Promise<void>;
   checkAllProfilesHealth: () => Promise<void>;
   /** 正在后台检测端点的方案 ID 集合；检测不锁定其他操作。 */
@@ -37,7 +36,6 @@ export interface KeydeckController {
   deleteProfile: (profile: Profile) => Promise<boolean>;
   copyKey: (profile: Profile) => Promise<void>;
   openConfig: (target: ClientTarget) => Promise<void>;
-  undo: (historyId: string) => Promise<void>;
   startGateway: (settings: GatewayStartSettings) => Promise<void>;
   stopGateway: () => Promise<void>;
   updateSettings: (patch: Partial<AppSettings>) => Promise<void>;
@@ -146,8 +144,7 @@ export function useKeydeckController(): KeydeckController {
   useEffect(() => {
     if (!toast) return undefined;
 
-    const timeout = toast.undoId ? UNDO_TOAST_DURATION_MS : DEFAULT_TOAST_DURATION_MS;
-    const timer = window.setTimeout(() => setToast(undefined), timeout);
+    const timer = window.setTimeout(() => setToast(undefined), DEFAULT_TOAST_DURATION_MS);
     return () => window.clearTimeout(timer);
   }, [toast]);
 
@@ -229,11 +226,7 @@ export function useKeydeckController(): KeydeckController {
         ? `“${result.profile.name}”已成为 ${labels} 的当前网关方案`
         : `“${result.profile.name}”已设为 ${labels} 的下次启动方案`;
       if (await refreshSilently(resultMessage)) {
-        setToast({
-          kind: "success",
-          message: resultMessage,
-          ...(result.historyEntry?.canUndo ? { undoId: result.historyEntry.id } : {}),
-        });
+        setToast({ kind: "success", message: resultMessage });
       }
     } catch (error) {
       setToast({ kind: "error", message: describeError(error) });
@@ -244,14 +237,19 @@ export function useKeydeckController(): KeydeckController {
     }
   }
 
-  async function testProfile(id: string): Promise<void> {
-    if (commandLock.current) return;
+  /**
+   * 识别模型：请求上游模型列表并保存。
+   *
+   * @returns 识别到的模型列表；失败或被其他命令阻塞时返回 undefined。
+   */
+  async function testProfile(id: string): Promise<string[] | undefined> {
+    if (commandLock.current) return undefined;
     commandLock.current = true;
     setBusy("test");
     setBusyId(id);
     try {
       const tested = await api.testProfile(id);
-      if (!await refreshSilently("模型识别已完成")) return;
+      await refreshSilently("模型识别已完成");
 
       if (tested.availableModels.length > 0) {
         setToast({
@@ -261,8 +259,10 @@ export function useKeydeckController(): KeydeckController {
       } else {
         setToast({ kind: "info", message: "请求已完成，但没有识别到模型" });
       }
+      return tested.availableModels;
     } catch (error) {
       setToast({ kind: "error", message: describeError(error) });
+      return undefined;
     } finally {
       commandLock.current = false;
       setBusy(null);
@@ -397,25 +397,6 @@ export function useKeydeckController(): KeydeckController {
     }
   }
 
-  async function undo(historyId: string): Promise<void> {
-    if (commandLock.current) return;
-    commandLock.current = true;
-    setBusy("undo");
-    setBusyId(historyId);
-    try {
-      const requestId = ++requestSequence.current;
-      const next = await api.undoHistory(historyId);
-      if (requestId === requestSequence.current) mergeBootstrap(next);
-      setToast({ kind: "success", message: "已恢复切换前的配置" });
-    } catch (error) {
-      setToast({ kind: "error", message: describeError(error) });
-    } finally {
-      commandLock.current = false;
-      setBusy(null);
-      setBusyId(undefined);
-    }
-  }
-
   async function startGateway(settings: GatewayStartSettings): Promise<void> {
     if (commandLock.current) return;
     commandLock.current = true;
@@ -506,7 +487,6 @@ export function useKeydeckController(): KeydeckController {
     deleteProfile,
     copyKey,
     openConfig,
-    undo,
     startGateway,
     stopGateway,
     updateSettings,

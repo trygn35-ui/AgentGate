@@ -28,6 +28,7 @@ const {
   RequestMonitorService,
 } = require('./services/request-monitor-service.cjs')
 const {
+  SILENT_LAUNCH_FLAG,
   SettingsSchema,
   defaultSettings,
   SettingsService,
@@ -84,6 +85,8 @@ let services
 let quitBarrierComplete = false
 let quitBarrierPromise
 let quitting = false
+/** 开机自启拉起的实例带 --silent：直接驻留托盘，不显示窗口。 */
+const silentLaunch = process.argv.includes(SILENT_LAUNCH_FLAG)
 
 /**
  * 创建主进程服务并绑定应用数据目录。
@@ -262,9 +265,10 @@ function scheduleWindowStateSave() {
  * 开发环境加载 Vite 地址，生产环境加载打包后的静态文件。窗口在内容准备完成前
  * 保持隐藏，加载失败时 Promise 会拒绝并交由 Electron 启动流程处理。
  *
+ * @param {{silent?: boolean}} options silent 为 true 时窗口保持隐藏（开机自启场景）。
  * @returns 窗口完成页面加载后的 Promise。
  */
-async function createWindow() {
+async function createWindow({ silent = false } = {}) {
   let savedState
   try {
     savedState = await services?.windowStateStore.read()
@@ -291,7 +295,9 @@ async function createWindow() {
   if (savedState?.maximized) mainWindow.maximize()
 
   secureWindowNavigation(mainWindow)
-  mainWindow.once('ready-to-show', () => mainWindow?.show())
+  mainWindow.once('ready-to-show', () => {
+    if (!silent) mainWindow?.show()
+  })
   mainWindow.on('resize', scheduleWindowStateSave)
   mainWindow.on('move', scheduleWindowStateSave)
   mainWindow.on('maximize', scheduleWindowStateSave)
@@ -357,6 +363,7 @@ if (!hasSingleInstanceLock) {
     services.gatewayService.setExperimentalToolBridgeEnabled?.(settings.experimentalToolBridge)
     await services.gatewayService.initialize({ start: settings.startGatewayOnLaunch })
     registerIpcHandlers({ ipcMain, clipboard, ...services })
+    // 无边框窗口的最小化/最大化/关闭；关闭沿用 close 事件里的托盘驻留判断。
     ipcMain.handle('keydeck:window-control', (_event, action) => {
       if (!mainWindow || mainWindow.isDestroyed()) return
       if (action === 'minimize') mainWindow.minimize()
@@ -365,7 +372,7 @@ if (!hasSingleInstanceLock) {
         else mainWindow.maximize()
       } else if (action === 'close') mainWindow.close()
     })
-    await createWindow()
+    await createWindow({ silent: silentLaunch })
     createTray()
     services.autoSwitchService.start((event) => {
       if (!mainWindow || mainWindow.isDestroyed()) return
