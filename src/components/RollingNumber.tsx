@@ -58,13 +58,19 @@ interface Reel {
  *
  * 落位后把纸带收回单帧，否则每个字位会常驻十几个节点，请求流里成百上千。
  */
-export function RollingChar({ char, ticker }: { char: string; ticker?: boolean }): ReactElement {
+export function RollingChar({ char, ticker, rollIn }: {
+  char: string;
+  ticker?: boolean;
+  /** 挂载时从空位滚进来（读数变长、新冒出来的位），而不是凭空蹦出。 */
+  rollIn?: boolean;
+}): ReactElement {
   const stripRef = useRef<HTMLSpanElement>(null);
-  const settled = useRef(char);
+  const settled = useRef(rollIn ? " " : char);
   const lastChange = useRef(0);
   const counter = useRef(0);
   const [reel, setReel] = useState<Reel>({
-    frames: [char],
+    // rollIn 时首帧画空位，随后 effect 把字滚进来；直接画 char 会先闪一下终态
+    frames: [rollIn ? " " : char],
     fromIndex: 0,
     targetIndex: 0,
     spin: false,
@@ -85,13 +91,14 @@ export function RollingChar({ char, ticker }: { char: string; ticker?: boolean }
       return;
     }
 
-    // 秒表类读数永远快滚——每 10 秒整卷慢滚一次的秒表像坏掉的老虎机
     const now = Date.now();
     // 空位 ↔ 数字只发生在网关开关这类用户亲手扳的动作上，永远值得整卷慢滚；
     // 否则快速开关时第二次变化会落进快滚窗口，动画被降级成一步小滑。
     const blankShift = (from === " " || char === " ") && canSpin(from, char);
-    const quick = !blankShift
-      && (ticker || now - lastChange.current < QUICK_WINDOW_MS || !canSpin(from, char));
+    // 秒表类读数（ticker）连空位滚进都走快步——跳表跨过 1:00 时新冒出的分位
+    // 要是慢滚三秒，旁边的秒位早跳了十下。
+    const quick = ticker
+      || (!blankShift && (now - lastChange.current < QUICK_WINDOW_MS || !canSpin(from, char)));
     lastChange.current = now;
 
     if (quick) {
@@ -212,13 +219,30 @@ export function RollingNumber({
   title,
   ticker,
 }: RollingNumberProps): ReactElement {
+  // 首次挂载（切页面、换语言）读数直接呈现；之后新冒出来的位才滚进来
+  const seasoned = useRef(false);
+  useEffect(() => {
+    seasoned.current = true;
+  }, []);
+  const chars = [...value];
   return (
     <Tag className={["rolling", className].filter(Boolean).join(" ")} title={title}>
       {/* 读屏软件读整串，别让它一位一位念 */}
       <span className="sr-only">{value}</span>
       <span aria-hidden="true" className="reel-row">
-        {[...value].map((char, index) => (
-          <RollingChar key={index} char={char} ticker={ticker} />
+        {chars.map((char, index) => (
+          <RollingChar
+            /*
+             * 从右端对齐，像里程表：个位永远是个位。
+             *
+             * 用从左数的 index 做 key 的话，读数变长（999 987 → 1 000 123）
+             * 时所有字符集体错一位，没变的数字也会跟着重滚一遍。
+             */
+            key={index - chars.length}
+            char={char}
+            ticker={ticker}
+            rollIn={seasoned.current}
+          />
         ))}
       </span>
     </Tag>
