@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, ReactElement } from "react";
 import { ActivityView } from "./components/ActivityView";
 import { ConfirmDialog } from "./components/ConfirmDialog";
+import { HintLayer } from "./components/HintLayer";
 import { SessionsView } from "./components/SessionsView";
 import { KeyringView } from "./components/KeyringView";
 import { OverviewView } from "./components/OverviewView";
@@ -374,6 +375,9 @@ function AppShell({ controller }: { controller: ReturnType<typeof useAgentGateCo
       {controller.toast && (
         <Toast toast={controller.toast} onClose={() => controller.setToast(undefined)} />
       )}
+
+      {/* 全应用唯一的提示层，替掉原生 title。元素只要写个 data-hint。 */}
+      <HintLayer />
     </div>
   );
 }

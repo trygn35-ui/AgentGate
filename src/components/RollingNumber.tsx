@@ -187,8 +187,21 @@ export function RollingChar({ char, ticker, rollIn }: {
     ? { "--roll-ms": `${Math.round(reel.delay + reel.duration)}ms` } as CSSProperties
     : undefined;
 
+  /*
+   * 停下来就收成一个字。
+   *
+   * 纸带那三层 span 只有滚动时才需要。一直留着的话，动态页 50 行 × 7 个读数
+   * ≈ 1790 个字位 × 3 层 = 五千多个节点；更要命的是每条纸带都带
+   * will-change: transform——一千七百多个合成层常驻显存。实测：一行 152 个
+   * 节点里有 132 个是滚筒（87%）。而已完成的请求，数字永远不会再变。
+   */
+  if (!rolling) {
+    const settled = reel.frames[0];
+    return <span className="reel">{settled === " " ? " " : settled}</span>;
+  }
+
   return (
-    <span className="reel" data-rolling={rolling ? "" : undefined} style={style}>
+    <span className="reel" data-rolling="" style={style}>
       <span className="reel-strip" ref={stripRef}>
         {reel.frames.map((frame, index) => (
           <span className="reel-cell" key={index}>

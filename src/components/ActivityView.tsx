@@ -4,7 +4,7 @@ import {
   CircleDot,
   LoaderCircle,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import type { ReactElement } from "react";
 import { CLIENT_META } from "../config";
 import { useI18n } from "../i18n";
@@ -110,6 +110,102 @@ function RequestStateIcon({ meta }: { meta: RequestMeta }): ReactElement {
   return <CircleDot size={15} />;
 }
 
+interface RequestRowProps {
+  request: ActiveRequest;
+  /** 已完成的行这是个定值；只有还在跑的行会每 300ms 变一次。 */
+  elapsed?: number;
+  state: RequestMeta;
+  m: Messages;
+  clock: Intl.DateTimeFormat;
+  delayMs: number;
+}
+
+/**
+ * 一条请求。memo 包着，因为秒表每 300ms 跳一次。
+ *
+ * 跳的只有还在跑的那几行，可原本每跳一次都要把 50 行、七千多个节点整个对账一遍。
+ * 已完成的行 props 一个字都没变——request 对象的引用也是稳的（见
+ * mergeActiveRequests：增量通知按 id 就地替换，没变的行还是原来那个对象），
+ * 所以 memo 能实打实地把它们全部跳过。
+ */
+const RequestRow = memo(function RequestRow({
+  request, elapsed, state, m, clock, delayMs,
+}: RequestRowProps): ReactElement {
+  const firstLatency = request.firstTokenLatencyMs ?? request.firstByteLatencyMs;
+  const firstLabel = request.firstTokenLatencyMs !== undefined ? "TTFT" : "TTFB";
+  const reasoning = request.reasoningEffort
+    ? REASONING_LABEL[request.reasoningEffort.toLocaleLowerCase()] ?? request.reasoningEffort
+    : "DEFAULT";
+  const subline = reasoning
+    + (request.streaming === true ? " · STREAM" : request.streaming === false ? " · SYNC" : "");
+  const tokens = request.tokenUsage;
+  const rate = cacheRate(request);
+  // 行里是缩写，悬停给全称
+  const tokenBreakdown = tokens
+    ? [
+      `↓ ${m.stream.tipIn} ${formatTokenCount(tokens.inputTokens)}`,
+      `↑ ${m.stream.tipOut} ${formatTokenCount(tokens.outputTokens)}`,
+      `C ${m.stream.tipCache} ${formatTokenCount(tokens.cachedTokens)}`,
+      `W ${m.stream.tipWrite} ${formatTokenCount(tokens.cacheWriteTokens)}`,
+      `R ${m.stream.tipReason} ${formatTokenCount(tokens.reasoningTokens)}`,
+    ].join("\n")
+    : undefined;
+
+  return (
+    <article className="request-row" style={{ animationDelay: `${delayMs}ms` }}>
+      <span
+        className={`request-state-icon ${state.tint} ${state.breathe ? "breathe" : ""}`}
+        data-hint={state.label}
+      >
+        <RequestStateIcon meta={state} />
+      </span>
+      <span className="request-main">
+        <span className="request-title">
+          <strong>{request.profileName}</strong>
+          <small className={`tag-client ${clientTone(request.client)}`}>
+            {clientLabel(request.client)}
+          </small>
+        </span>
+        <code className="request-sub" data-hint={request.upstreamUrl}>
+          {formatClock(request.startedAt, clock)} · {request.upstreamUrl || m.stream.resolving}
+        </code>
+      </span>
+      <span className="request-model">
+        <code data-hint={request.model}>{request.model || "———"}</code>
+        <small>{subline}</small>
+      </span>
+      <span className="request-tokens">
+        <span className="tok-io">
+          <RollingNumber className="tok-in" value={`↓${formatTokenCount(tokens?.inputTokens)}`} />
+          <RollingNumber className="tok-out" value={`↑${formatTokenCount(tokens?.outputTokens)}`} />
+        </span>
+        {/*
+          四个口径一起列，谁也不顶替谁。
+          C 是缓存命中（便宜），W 是缓存写入（按 1.25× 计费，最贵的一次），
+          R 是推理 token——它已经含在 ↑ 输出里了，单列只为让你看见钱花在哪。
+        */}
+        <small className="tok-detail" data-hint={tokenBreakdown}>
+          <RollingNumber as="span" className="tok-cache" value={`C ${formatTokenCount(tokens?.cachedTokens)}`} />
+          <RollingNumber as="span" className="tok-write" value={`W ${formatTokenCount(tokens?.cacheWriteTokens)}`} />
+          <RollingNumber as="span" className="tok-reason" value={`R ${formatTokenCount(tokens?.reasoningTokens)}`} />
+        </small>
+      </span>
+      <span className="cache-rate">
+        <RollingNumber
+          className={cacheRateTier(rate)}
+          value={rate === undefined ? "———" : (rate / 100).toFixed(3)}
+        />
+        <small>{m.stream.cache}</small>
+      </span>
+      <span className="request-timing">
+        <RollingNumber ticker value={formatDuration(elapsed)} />
+        <small className={latencyTier(firstLatency)}>{firstLabel} {formatDuration(firstLatency)}</small>
+      </span>
+      <strong className={`request-state-label ${state.tint}`}>{state.label}</strong>
+    </article>
+  );
+});
+
 interface ActivityViewProps {
   requests: ActiveRequest[];
 }
@@ -183,102 +279,29 @@ export function ActivityView({ requests }: ActivityViewProps): ReactElement {
 
         <div>
           {visibleRequests.map((request, index) => {
-              const state = meta[request.state];
-              const startedAt = new Date(request.startedAt).getTime();
-              const elapsed = request.durationMs ?? (
-                isActive(request) && Number.isFinite(startedAt)
-                  ? Math.max(0, now - startedAt)
-                  : undefined
-              );
-              const firstLatency = request.firstTokenLatencyMs ?? request.firstByteLatencyMs;
-              const firstLabel = request.firstTokenLatencyMs !== undefined ? "TTFT" : "TTFB";
-              const reasoning = request.reasoningEffort
-                ? REASONING_LABEL[request.reasoningEffort.toLocaleLowerCase()] ?? request.reasoningEffort
-                : "DEFAULT";
-              const subline = reasoning
-                + (request.streaming === true ? " · STREAM" : request.streaming === false ? " · SYNC" : "");
-              const tokens = request.tokenUsage;
-              const rate = cacheRate(request);
-              // 行里是缩写，悬停给全称
-              const tokenBreakdown = tokens
-                ? [
-                  `↓ ${m.stream.tipIn} ${formatTokenCount(tokens.inputTokens)}`,
-                  `↑ ${m.stream.tipOut} ${formatTokenCount(tokens.outputTokens)}`,
-                  `C ${m.stream.tipCache} ${formatTokenCount(tokens.cachedTokens)}`,
-                  `W ${m.stream.tipWrite} ${formatTokenCount(tokens.cacheWriteTokens)}`,
-                  `R ${m.stream.tipReason} ${formatTokenCount(tokens.reasoningTokens)}`,
-                ].join("\n")
-                : undefined;
-              return (
-                <article
-                  className="request-row"
-                  key={request.id}
-                  style={{ animationDelay: `${Math.min(index, 12) * 40}ms` }}
-                >
-                  <span
-                    className={`request-state-icon ${state.tint} ${state.breathe ? "breathe" : ""}`}
-                    title={state.label}
-                  >
-                    <RequestStateIcon meta={state} />
-                  </span>
-                  <span className="request-main">
-                    <span className="request-title">
-                      <strong>{request.profileName}</strong>
-                      <small className={`tag-client ${clientTone(request.client)}`}>
-                        {clientLabel(request.client)}
-                      </small>
-                    </span>
-                    <code className="request-sub" title={request.upstreamUrl}>
-                      {formatClock(request.startedAt, clock)} · {request.upstreamUrl || m.stream.resolving}
-                    </code>
-                  </span>
-                  <span className="request-model">
-                    <code title={request.model}>{request.model || "———"}</code>
-                    <small>{subline}</small>
-                  </span>
-                  <span className="request-tokens">
-                    <span className="tok-io">
-                      <RollingNumber className="tok-in" value={`↓${formatTokenCount(tokens?.inputTokens)}`} />
-                      <RollingNumber className="tok-out" value={`↑${formatTokenCount(tokens?.outputTokens)}`} />
-                    </span>
-                    {/*
-                      四个口径一起列，谁也不顶替谁。
-                      C 是缓存命中（便宜），W 是缓存写入（按 1.25× 计费，最贵的一次），
-                      R 是推理 token——它已经含在 ↑ 输出里了，单列只为让你看见钱花在哪。
-                    */}
-                    <small className="tok-detail" title={tokenBreakdown}>
-                      <RollingNumber
-                        as="span"
-                        className="tok-cache"
-                        value={`C ${formatTokenCount(tokens?.cachedTokens)}`}
-                      />
-                      <RollingNumber
-                        as="span"
-                        className="tok-write"
-                        value={`W ${formatTokenCount(tokens?.cacheWriteTokens)}`}
-                      />
-                      <RollingNumber
-                        as="span"
-                        className="tok-reason"
-                        value={`R ${formatTokenCount(tokens?.reasoningTokens)}`}
-                      />
-                    </small>
-                  </span>
-                  <span className="cache-rate">
-                    <RollingNumber
-                      className={cacheRateTier(rate)}
-                      value={rate === undefined ? "———" : (rate / 100).toFixed(3)}
-                    />
-                    <small>{m.stream.cache}</small>
-                  </span>
-                  <span className="request-timing">
-                    <RollingNumber ticker value={formatDuration(elapsed)} />
-                    <small className={latencyTier(firstLatency)}>{firstLabel} {formatDuration(firstLatency)}</small>
-                  </span>
-                  <strong className={`request-state-label ${state.tint}`}>{state.label}</strong>
-                </article>
-              );
-            })}
+            const startedAt = new Date(request.startedAt).getTime();
+            /*
+             * 已完成的行 elapsed 就是它的 durationMs——一个定值，跟 now 无关。
+             * 所以秒表每 300ms 跳一次时，只有还在跑的那几行 props 变了，其余的
+             * 被 memo 挡在外面，不会重渲。
+             */
+            const elapsed = request.durationMs ?? (
+              isActive(request) && Number.isFinite(startedAt)
+                ? Math.max(0, now - startedAt)
+                : undefined
+            );
+            return (
+              <RequestRow
+                key={request.id}
+                request={request}
+                elapsed={elapsed}
+                state={meta[request.state]}
+                m={m}
+                clock={clock}
+                delayMs={Math.min(index, 12) * 40}
+              />
+            );
+          })}
           {visibleRequests.length === 0 && (
             <p className="feed-empty">
               {requests.length === 0 ? m.stream.empty : m.stream.noMatch}

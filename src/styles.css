@@ -254,6 +254,8 @@ html[lang="zh"], html[lang="zh-TW"], html[lang="ja"] {
   height: 1.3em;
   line-height: 1.3em;
   vertical-align: bottom;
+  /* 停下来的字位就是这一个 span 本身（没有纸带），居中也得由它来管 */
+  text-align: center;
 }
 .reel-cell {
   display: block;
@@ -261,7 +263,14 @@ html[lang="zh"], html[lang="zh-TW"], html[lang="ja"] {
   line-height: 1.3em;
   text-align: center;
 }
-.reel-strip { display: block; will-change: transform; }
+.reel-strip { display: block; }
+/*
+ * will-change 只在真滚的时候给。
+ *
+ * 挂在 .reel-strip 上是常驻的——动态页光读数就有 1790 个字位，等于一千七百多个
+ * 合成层白占显存。will-change 是「我马上要动」的提示，不是「我长期存在」的标签。
+ */
+.reel[data-rolling] .reel-strip { will-change: transform; }
 
 /* 读屏软件读整串读数，不逐字位念 */
 .sr-only {
@@ -2597,4 +2606,48 @@ body.rail-dragging .rail-thumb { cursor: grabbing; }
   font-size: var(--fs-xs);
   line-height: 1.5;
   color: var(--ink-quiet);
+}
+
+/* ————————————————————————— 提示层 —————————————————————————
+ *
+ * 替掉原生 title。原生那个是操作系统画的：黄底、圆角、自带字体，样式一点都改不了，
+ * 跟这套印刷/仪表的语言完全不搭。
+ */
+
+.hint {
+  position: fixed;
+  z-index: 90;
+  max-width: 340px;
+  padding: 8px 11px;
+  border: 1px solid var(--line-strong);
+  /* 上沿一道实色，像标签纸的压边 */
+  border-top: 2px solid var(--accent);
+  background: var(--paper);
+  box-shadow: 0 6px 22px rgb(0 0 0 / .2);
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+  line-height: 1.66;
+  color: var(--ink);
+  white-space: pre-wrap;
+  word-break: break-word;
+  pointer-events: none;
+  /* 锚点在下沿正中：往左挪半个身位，再整体上移 */
+  transform: translate(-50%, -100%);
+  animation: hint-in 150ms cubic-bezier(.16, .84, .3, 1);
+}
+/* 上方放不下就翻到锚点下面 */
+.hint.below {
+  border-top: 1px solid var(--line-strong);
+  border-bottom: 2px solid var(--accent);
+  transform: translate(-50%, 0);
+}
+
+@keyframes hint-in {
+  from { opacity: 0; transform: translate(-50%, -100%) translateY(4px); }
+  to { opacity: 1; }
+}
+.hint.below { animation-name: hint-in-below; }
+@keyframes hint-in-below {
+  from { opacity: 0; transform: translate(-50%, 0) translateY(-4px); }
+  to { opacity: 1; }
 }

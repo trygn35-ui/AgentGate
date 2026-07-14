@@ -103,10 +103,10 @@ function Detail({ session, count }: { session: AgentSession; count?: number }): 
   return (
     <section className="detail" aria-live="polite">
       <header className="detail-head">
-        <h2 title={session.title}>{session.title}</h2>
+        <h2 data-hint={session.title}>{session.title}</h2>
         <div className="detail-meta">
           <small className={`tag-client ${meta.tone}`}>{meta.label}</small>
-          <code title={session.workspace || m.sessions.unknownWorkspace}>
+          <code data-hint={session.workspace || m.sessions.unknownWorkspace}>
             <FolderOpen size={11} />
             {session.workspace ? shortenPath(session.workspace, 48) : m.sessions.unknownWorkspace}
           </code>
@@ -353,7 +353,7 @@ export function SessionsView({ onToast }: SessionsViewProps): ReactElement {
         <button
           type="button"
           className="restat"
-          title={m.sessions.refresh}
+          data-hint={m.sessions.refresh}
           aria-label={m.sessions.refresh}
           disabled={busy || scanning}
           onClick={() => void scan()}
@@ -396,8 +396,8 @@ export function SessionsView({ onToast }: SessionsViewProps): ReactElement {
                   />
                   <span className="index-no">{String(position + 1).padStart(3, "0")}</span>
                   <span className="index-main">
-                    <strong title={session.title}>{session.title}</strong>
-                    <code title={session.workspace || m.sessions.unknownWorkspace}>
+                    <strong data-hint={session.title}>{session.title}</strong>
+                    <code data-hint={session.workspace || m.sessions.unknownWorkspace}>
                       {session.workspace ? shortenPath(session.workspace, 28) : m.sessions.unknownWorkspace}
                     </code>
                   </span>
