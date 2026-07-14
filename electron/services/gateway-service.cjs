@@ -1003,6 +1003,20 @@ class GatewayService {
         return
       }
     }
+    /*
+     * 转发期间豁免本地 socket 的空闲回收。
+     *
+     * SSE 在推理长静默期间上下行都没有一个字节，五分钟空闲计时会把活跃请求
+     * 连根掐断——客户端表现为 stream disconnected / transport error，且只在
+     * 走网关时出现（直连没有这个计时器）。客户端跑路由 aborted/close 清理
+     * 兜底；响应收尾后恢复计时，keep-alive 的闲置回收照旧。
+     */
+    const localSocket = request.socket
+    localSocket?.setTimeout?.(0)
+    response.once('close', () => {
+      if (localSocket && !localSocket.destroyed) localSocket.setTimeout(LOCAL_IDLE_TIMEOUT_MS)
+    })
+
     const headers = stripHeaders(request.headers, ['host'])
     // Keep the monitoring side-channel readable; the gateway forwards the
     // response bytes unchanged to the client, but asks upstream for identity.

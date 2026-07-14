@@ -460,6 +460,47 @@ describe("GatewayService", () => {
     expect(sseResponse.chunks[0]).toEqual(sseChunks[0]);
   });
 
+  it("转发期间豁免本地 socket 空闲计时，响应收尾后恢复", async () => {
+    // 真实事故：推理长静默期间 SSE 上下行都没有字节，五分钟空闲回收
+    // 把活跃请求掐断，客户端报 stream disconnected（直连不受影响）。
+    let releaseStream;
+    const gate = new Promise((resolve) => { releaseStream = resolve; });
+    const upstream = await listen(async (_request, response) => {
+      response.writeHead(200, { "content-type": "text/event-stream" });
+      response.write('data: {"type":"response.created"}\n\n');
+      await gate;
+      response.end("data: [DONE]\n\n");
+    });
+    const profile = {
+      id: PROFILE_A,
+      name: "Idle",
+      protocol: "openai-responses",
+      authMode: "api-key",
+      baseUrl: upstream.baseUrl,
+      targets: ["codex"],
+    };
+    const { service } = await createGateway({
+      [PROFILE_A]: { profile, apiKey: "upstream-secret" },
+    });
+    await service.activateRoutes(profile);
+    const token = await localCredential(service, profile);
+    const baseUrl = service.getPublicState().localBaseUrls.codex;
+
+    const responsePromise = rawRequest(`${baseUrl}/responses`, {
+      headers: { "x-api-key": token },
+    });
+    // 等首包到达客户端，确认请求已在转发中
+    await vi.waitFor(() => {
+      expect([...service.sockets].length).toBeGreaterThan(0);
+      expect([...service.sockets].some((socket) => socket.timeout === 0)).toBe(true);
+    });
+
+    releaseStream();
+    const result = await responsePromise;
+    expect(result.status).toBe(200);
+    expect(result.body.toString("utf8")).toContain("[DONE]");
+  });
+
   it("请求监控覆盖响应生命周期且不接触正文和认证", async () => {
     const monitor = {
       start: vi.fn().mockReturnValue("request-1"),
