@@ -883,3 +883,122 @@ describe("首次接管撞上端口占用", () => {
     }
   });
 });
+
+describe("首次使用 Codex（配置里没有 provider）", () => {
+  function freshHarness() {
+    const { profileStore, historyStore } = createTestStores(root);
+    const profileService = new ProfileService(profileStore, testVault);
+    const gatewayStore = new JsonFileStore(
+      path.join(root, "data", "gateway.json"),
+      GatewayStoreSchema,
+      defaultGatewayStore,
+    );
+    const gatewayBaselineStore = new JsonFileStore(
+      path.join(root, "data", "gateway-recovery.json"),
+      GatewayBaselineStoreSchema,
+      defaultGatewayBaselineStore,
+    );
+    const gatewayService = new GatewayService({ profileService, store: gatewayStore, vault: testVault });
+    const codexPath = path.join(root, ".codex", "config.toml");
+    const adapters = createAdapters({
+      claude: { config: path.join(root, ".claude", "settings.json") },
+      codex: { config: codexPath },
+      opencode: {
+        config: path.join(root, ".config", "opencode", "opencode.json"),
+        auth: path.join(root, ".local", "share", "opencode", "auth.json"),
+      },
+      gemini: {
+        config: path.join(root, ".gemini", "settings.json"),
+        env: path.join(root, ".gemini", ".env"),
+      },
+    });
+    const applyService = new ApplyService({
+      profileService,
+      adapters,
+      historyStore,
+      backupDirectory: path.join(root, "data", "backups"),
+      vault: testVault,
+      gatewayService,
+      gatewayBaselineStore,
+    });
+    return { profileService, gatewayService, applyService, codexPath };
+  }
+
+  async function freshProfile(profileService) {
+    return profileService.save({
+      name: "首次方案",
+      protocol: "openai-responses",
+      baseUrl: "https://relay.example/v1",
+      apiKey: "sk-first-run",
+      model: "gpt-5-codex",
+      authMode: "bearer",
+      targets: ["codex"],
+    });
+  }
+
+  it("config.toml 完全不存在：接管整段新建，断开整段拆掉", async () => {
+    const { profileService, gatewayService, applyService, codexPath } = freshHarness();
+    const profile = await freshProfile(profileService);
+    await applyService.assignProfile(profile.id, ["codex"]);
+
+    try {
+      // 修复前在这里就炸：Codex config.toml must define an active model_provider
+      await applyService.startGateway({ port: 0, targets: ["codex"] });
+      const state = gatewayService.getPublicState();
+      expect(state.engaged).toEqual(["codex"]);
+
+      const written = TOML.parse(await fs.readFile(codexPath, "utf8"));
+      expect(written.model_provider).toBe("agentgate_gateway");
+      expect(written.model).toBe("gpt-5-codex");
+      expect(written.model_providers.agentgate_gateway).toMatchObject({
+        wire_api: "responses",
+        requires_openai_auth: false,
+      });
+      expect(written.model_providers.agentgate_gateway.base_url)
+        .toContain(`127.0.0.1:${state.port}/codex/`);
+      // 上游 Key 绝不进客户端配置
+      expect(await fs.readFile(codexPath, "utf8")).not.toContain("sk-first-run");
+
+      // 断开：我们建的整段拆干净，回到「本来就没有」
+      await applyService.stopGateway({ targets: ["codex"] });
+      const restored = TOML.parse(await fs.readFile(codexPath, "utf8"));
+      expect(restored.model_provider).toBeUndefined();
+      expect(restored.model).toBeUndefined();
+      expect(restored.model_providers?.agentgate_gateway).toBeUndefined();
+    } finally {
+      await gatewayService.stop().catch(() => {});
+    }
+  });
+
+  it("有 model 和 mcp、没有 provider：接管留住 mcp，断开按原样放回 model", async () => {
+    const { profileService, gatewayService, applyService, codexPath } = freshHarness();
+    await fs.mkdir(path.dirname(codexPath), { recursive: true });
+    // 真实场景：用过 codex 但从没配置 provider（默认走 ChatGPT 登录），还挂了 MCP
+    await fs.writeFile(codexPath, [
+      'model = "o3"',
+      "",
+      "[mcp_servers.demo]",
+      'command = "node"',
+    ].join("\n") + "\n", "utf8");
+    const profile = await freshProfile(profileService);
+    await applyService.assignProfile(profile.id, ["codex"]);
+
+    try {
+      await applyService.startGateway({ port: 0, targets: ["codex"] });
+      const written = TOML.parse(await fs.readFile(codexPath, "utf8"));
+      expect(written.model_provider).toBe("agentgate_gateway");
+      expect(written.model).toBe("gpt-5-codex");
+      // 用户自己的 MCP 一个字都不动
+      expect(written.mcp_servers.demo.command).toBe("node");
+
+      await applyService.stopGateway({ targets: ["codex"] });
+      const restored = TOML.parse(await fs.readFile(codexPath, "utf8"));
+      expect(restored.model_provider).toBeUndefined();
+      expect(restored.model).toBe("o3");
+      expect(restored.model_providers?.agentgate_gateway).toBeUndefined();
+      expect(restored.mcp_servers.demo.command).toBe("node");
+    } finally {
+      await gatewayService.stop().catch(() => {});
+    }
+  });
+});

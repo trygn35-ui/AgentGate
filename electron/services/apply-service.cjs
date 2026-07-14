@@ -518,7 +518,11 @@ class ApplyService {
       const currentManagedState = target === TARGET.CODEX
         ? await adapter.captureManagedState(current.sources)
         : undefined
-      if (currentManagedState) assertCodexGatewayProtocol(profile, currentManagedState)
+      // fresh = 配置里本来就没有 provider，没有现成的 wire_api 需要兼容——接管时
+      // 会按方案协议整段新建，协议断言只对「改现有 provider」的路径有意义。
+      if (currentManagedState && !currentManagedState.fresh) {
+        assertCodexGatewayProtocol(profile, currentManagedState)
+      }
       let trustedBaseline
       if (nextBaselines[target]) {
         try {

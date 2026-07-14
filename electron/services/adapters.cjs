@@ -9,8 +9,11 @@ const {
   patchEnv,
   patchJsonc,
   readTextSnapshot,
+  captureCodexFreshState,
+  codexHasActiveProvider,
   codexProviderState,
   restoreCodexGatewayBaseUrl,
+  restoreCodexManagedState,
 } = require('./config-utils.cjs')
 const { AUTH_MODE, PROTOCOL, TARGET } = require('./schemas.cjs')
 
@@ -245,6 +248,19 @@ function createAdapters(paths) {
         )
         if (options.gateway) {
           return [await draft(TARGET.CODEX, paths.codex.config, (source) => {
+            /*
+             * 首次使用 Codex 的人配置里没有任何 provider——「只改现有 provider 的
+             * base_url」在这儿无的放矢。整段建一个指向网关的 provider；基线是
+             * fresh，断开时按基线整段拆掉（见 buildRestore）。基线尚未捕获时也
+             * 按当前配置判定：没有活跃 provider 就走建段。
+             */
+            if (options.baseline?.fresh
+              || (!options.baseline && !codexHasActiveProvider(source))) {
+              return patchCodexToml(source, profile, apiKey, {
+                providerId: options.providerId || GATEWAY_PROVIDER_ID,
+                providerName: options.providerName || GATEWAY_PROVIDER_NAME,
+              })
+            }
             const current = codexProviderState(source)
             if (options.baseline?.providerId
               && current.providerId !== options.baseline.providerId) {
@@ -275,24 +291,32 @@ function createAdapters(paths) {
       },
       async captureManagedState(suppliedSources) {
         const sources = await adapterSources(this.paths, suppliedSources)
-        return codexProviderState(sourceText(
-          sources,
-          paths.codex.config,
-          '',
-        ))
+        const source = sourceText(sources, paths.codex.config, '')
+        // 首次使用：没有活跃 provider，记一份 fresh 基线，断开时整段拆掉
+        if (!codexHasActiveProvider(source)) return captureCodexFreshState(source)
+        return codexProviderState(source)
       },
       async buildRestore(state, suppliedSources) {
         return [await restoreDraft(TARGET.CODEX, paths.codex.config, (source) => (
-          restoreCodexGatewayBaseUrl(source, state)
+          state?.fresh
+            ? restoreCodexManagedState(source, state, GATEWAY_PROVIDER_ID)
+            : restoreCodexGatewayBaseUrl(source, state)
         ), suppliedSources)]
       },
       async verifyManagedState(state, suppliedSources) {
         const sources = await adapterSources(this.paths, suppliedSources)
-        const current = codexProviderState(sourceText(
-          sources,
-          paths.codex.config,
-          '',
-        ), state.providerId)
+        const source = sourceText(sources, paths.codex.config, '')
+        if (state?.fresh) {
+          // 拆干净的标准：我们加的三样都不在了，原有的顶层 model 按原样回位
+          const data = parseTomlValue(source, 'Codex config.toml')
+          const modelRestored = state.model.present
+            ? data.model === state.model.value
+            : data.model === undefined
+          return data.model_provider === undefined
+            && data.model_providers?.[GATEWAY_PROVIDER_ID] === undefined
+            && modelRestored
+        }
+        const current = codexProviderState(source, state.providerId)
         return current.providerId === state.providerId
           && JSON.stringify(current.baseUrl) === JSON.stringify(state.baseUrl)
       },

@@ -186,6 +186,31 @@ function tomlScalar(value) {
   return output.slice(output.indexOf('=') + 1).trim()
 }
 
+/** 配置里有没有选定的 model_provider。首次使用 Codex 的人这里是空的。 */
+function codexHasActiveProvider(source) {
+  const data = parseTomlValue(source, 'Codex config.toml')
+  return typeof data.model_provider === 'string' && data.model_provider.trim() !== ''
+}
+
+/**
+ * 首次接管前的快照：配置里还没有活跃 provider（甚至没有 config.toml）。
+ *
+ * 接管的常规姿势是「只改现有 provider 的 base_url」，但第一次用 Codex 的人
+ * 没有任何东西可改——这时要整段建一个指向网关的 provider，断开时再整段拆掉。
+ * 快照记下顶层 model 原本的样子（在不在、是什么），拆的时候按原样放回去；
+ * 形状与 restoreCodexManagedState 期望的 present/value 语义一致。
+ */
+function captureCodexFreshState(source) {
+  const data = parseTomlValue(source, 'Codex config.toml')
+  const modelPresent = Object.prototype.hasOwnProperty.call(data, 'model')
+  return {
+    fresh: true,
+    modelProvider: { present: false, value: null },
+    model: { present: modelPresent, value: modelPresent ? data.model : null },
+    provider: { present: false, value: null },
+  }
+}
+
 function codexProviderState(source, providerId) {
   const data = parseTomlValue(source, 'Codex config.toml')
   const resolvedProviderId = providerId || data.model_provider
@@ -495,6 +520,8 @@ module.exports = {
   assertValidToml,
   patchCodexToml,
   restoreCodexManagedState,
+  captureCodexFreshState,
+  codexHasActiveProvider,
   codexProviderState,
   patchCodexGatewayBaseUrl,
   restoreCodexGatewayBaseUrl,
