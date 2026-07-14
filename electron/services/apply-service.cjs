@@ -218,10 +218,25 @@ class ApplyService {
       }
 
       const nextEngaged = [...new Set([...alreadyEngaged, ...fresh])]
-      await this.gatewayService.start({
-        ...(settings.port === undefined ? {} : { port: settings.port }),
-        engage: nextEngaged,
-      })
+      try {
+        await this.gatewayService.start({
+          ...(settings.port === undefined ? {} : { port: settings.port }),
+          engage: nextEngaged,
+        })
+      } catch (error) {
+        /*
+         * 端口被占就自动换一个空闲的重试，别把 EADDRINUSE 原样甩给用户。
+         *
+         * 首次使用时默认端口（17863）可能被别的程序占着，用户会卡死在一句原生
+         * 报错上——他不知道右上角的端口能点。这条路只在「还没有任何已接管的
+         * 客户端」时走：接管中的客户端配置里写的是旧端口，换了端口它们就断了；
+         * 而绑定失败本身说明旧端口上跑的不是我们，没谁会因为换端口而受伤。
+         * 随后 _writeGatewayEntries 会把新端口写进这次接管的客户端配置。
+         */
+        if (error?.code !== 'EADDRINUSE' || alreadyEngaged.size > 0) throw error
+        await this.gatewayService.reassignPort()
+        await this.gatewayService.start({ engage: nextEngaged })
+      }
       try {
         await this._writeGatewayEntries(entries, { replaceBaselines: true })
         return this.gatewayService.getPublicState()

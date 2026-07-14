@@ -706,3 +706,180 @@ command = "node"
     ]);
   });
 });
+
+describe("首次接管撞上端口占用", () => {
+  it("EADDRINUSE 时自动换空闲端口重试，新端口写进客户端配置", async () => {
+    const http = await import("node:http");
+    const { profileStore, historyStore } = createTestStores(root);
+    const profileService = new ProfileService(profileStore, testVault);
+    const gatewayStore = new JsonFileStore(
+      path.join(root, "data", "gateway.json"),
+      GatewayStoreSchema,
+      defaultGatewayStore,
+    );
+    const gatewayBaselineStore = new JsonFileStore(
+      path.join(root, "data", "gateway-recovery.json"),
+      GatewayBaselineStoreSchema,
+      defaultGatewayBaselineStore,
+    );
+    const gatewayService = new GatewayService({ profileService, store: gatewayStore, vault: testVault });
+    const codexPath = path.join(root, ".codex", "config.toml");
+    await fs.mkdir(path.dirname(codexPath), { recursive: true });
+    // 接管 codex 要求配置里已有活跃的 model_provider，给个最小但合法的
+    await fs.writeFile(codexPath, [
+      'model_provider = "custom"',
+      'model = "user-model"',
+      "",
+      "[model_providers.custom]",
+      'name = "Custom"',
+      'base_url = "https://custom.example/v1"',
+      'wire_api = "responses"',
+    ].join("\n") + "\n", "utf8");
+    const adapters = createAdapters({
+      claude: { config: path.join(root, ".claude", "settings.json") },
+      codex: { config: codexPath },
+      opencode: {
+        config: path.join(root, ".config", "opencode", "opencode.json"),
+        auth: path.join(root, ".local", "share", "opencode", "auth.json"),
+      },
+      gemini: {
+        config: path.join(root, ".gemini", "settings.json"),
+        env: path.join(root, ".gemini", ".env"),
+      },
+    });
+    const applyService = new ApplyService({
+      profileService,
+      adapters,
+      historyStore,
+      backupDirectory: path.join(root, "data", "backups"),
+      vault: testVault,
+      gatewayService,
+      gatewayBaselineStore,
+    });
+    const profile = await profileService.save({
+      name: "首次方案",
+      protocol: "openai-responses",
+      baseUrl: "https://relay.example/v1",
+      apiKey: "sk-first-run",
+      model: "gpt-5-codex",
+      authMode: "bearer",
+      targets: ["codex"],
+    });
+    await applyService.assignProfile(profile.id, ["codex"]);
+
+    // 别的程序占着默认端口——首次用户撞上的就是这一幕
+    const squatter = http.default.createServer(() => {});
+    await new Promise((resolve) => squatter.listen(0, "127.0.0.1", resolve));
+    const takenPort = squatter.address().port;
+
+    try {
+      /*
+       * 修复前这里直接把 EADDRINUSE 甩给用户，首次配置就地卡死；
+       * 现在应当自动换一个空闲端口接管成功，且新端口写进 codex 配置。
+       */
+      await applyService.startGateway({ port: takenPort, targets: ["codex"] });
+      const state = gatewayService.getPublicState();
+      expect(state.status).toBe("running");
+      expect(state.port).not.toBe(takenPort);
+      expect(state.engaged).toEqual(["codex"]);
+
+      const written = TOML.parse(await fs.readFile(codexPath, "utf8"));
+      expect(written.model_providers.custom.base_url)
+        .toContain(`127.0.0.1:${state.port}`);
+    } finally {
+      await gatewayService.stop().catch(() => {});
+      await new Promise((resolve) => squatter.close(resolve));
+    }
+  });
+
+  it("已有客户端在接管中时绝不自动换端口——它们的配置写着旧端口", async () => {
+    const { profileStore, historyStore } = createTestStores(root);
+    const profileService = new ProfileService(profileStore, testVault);
+    const gatewayStore = new JsonFileStore(
+      path.join(root, "data", "gateway.json"),
+      GatewayStoreSchema,
+      defaultGatewayStore,
+    );
+    const gatewayBaselineStore = new JsonFileStore(
+      path.join(root, "data", "gateway-recovery.json"),
+      GatewayBaselineStoreSchema,
+      defaultGatewayBaselineStore,
+    );
+    const gatewayService = new GatewayService({ profileService, store: gatewayStore, vault: testVault });
+    let reassigned = false;
+    const originalReassign = gatewayService.reassignPort.bind(gatewayService);
+    gatewayService.reassignPort = async () => {
+      reassigned = true;
+      return originalReassign();
+    };
+    const codexPath = path.join(root, ".codex", "config.toml");
+    const claudePath = path.join(root, ".claude", "settings.json");
+    await fs.mkdir(path.dirname(codexPath), { recursive: true });
+    // 接管 codex 要求配置里已有活跃的 model_provider，给个最小但合法的
+    await fs.writeFile(codexPath, [
+      'model_provider = "custom"',
+      'model = "user-model"',
+      "",
+      "[model_providers.custom]",
+      'name = "Custom"',
+      'base_url = "https://custom.example/v1"',
+      'wire_api = "responses"',
+    ].join("\n") + "\n", "utf8");
+    const adapters = createAdapters({
+      claude: { config: claudePath },
+      codex: { config: codexPath },
+      opencode: {
+        config: path.join(root, ".config", "opencode", "opencode.json"),
+        auth: path.join(root, ".local", "share", "opencode", "auth.json"),
+      },
+      gemini: {
+        config: path.join(root, ".gemini", "settings.json"),
+        env: path.join(root, ".gemini", ".env"),
+      },
+    });
+    const applyService = new ApplyService({
+      profileService,
+      adapters,
+      historyStore,
+      backupDirectory: path.join(root, "data", "backups"),
+      vault: testVault,
+      gatewayService,
+      gatewayBaselineStore,
+    });
+    const codexProfile = await profileService.save({
+      name: "Codex 方案",
+      protocol: "openai-responses",
+      baseUrl: "https://relay.example/v1",
+      apiKey: "sk-two",
+      model: "gpt-5-codex",
+      authMode: "bearer",
+      targets: ["codex"],
+    });
+    const claudeProfile = await profileService.save({
+      name: "Claude 方案",
+      protocol: "anthropic",
+      baseUrl: "https://relay.example",
+      apiKey: "sk-two-claude",
+      model: "claude-sonnet-4-5",
+      authMode: "bearer",
+      targets: ["claude"],
+    });
+    await applyService.assignProfile(codexProfile.id, ["codex"]);
+    await applyService.assignProfile(claudeProfile.id, ["claude"]);
+
+    try {
+      // 先接管 codex，网关跑起来
+      await applyService.startGateway({ port: 0, targets: ["codex"] });
+      const runningPort = gatewayService.getPublicState().port;
+
+      // 再接管 claude 时传一个「被占的端口」——其实就是网关自己正在用的端口。
+      // 服务器已经在跑，不该也不会重绑；关键是绝不能触发自动换端口。
+      await applyService.startGateway({ port: runningPort, targets: ["claude"] });
+      expect(reassigned).toBe(false);
+      expect(gatewayService.getPublicState().port).toBe(runningPort);
+      expect(new Set(gatewayService.getPublicState().engaged)).toEqual(new Set(["codex", "claude"]));
+    } finally {
+      await gatewayService.stop().catch(() => {});
+    }
+  });
+});
