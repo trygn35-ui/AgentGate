@@ -59,8 +59,7 @@ export interface Messages {
     clientDefault: string;
     engage: string;
     release: string;
-    engageAll: string;
-    releaseAll: string;
+    swapProfile: string;
     engaged: string;
     notEngaged: string;
     portHint: string;
@@ -266,10 +265,10 @@ const zh: Messages = {
     heroStopping: "网关正在停止",
     heroFault: "网关需要处理",
     routesBound: "{routes} 条路由生效 · {profiles} 个方案就绪",
-    directToUpstream: "客户端直连上游 · 打开右上角开关接管",
+    directToUpstream: "客户端直连上游 · 点客户端卡片接管",
     streaming: "{count} 个请求进行中",
     idle: "当前空闲",
-    faultHint: "配置被外部修改，请在顶栏恢复并关闭网关",
+    faultHint: "配置被外部修改，请断开该客户端后重新接管",
     divergence: "分歧率",
     cacheHit: "缓存命中",
     tokens: "用量",
@@ -291,8 +290,7 @@ const zh: Messages = {
     clientDefault: "沿用客户端",
     engage: "接管",
     release: "断开",
-    engageAll: "接管全部",
-    releaseAll: "全部断开",
+    swapProfile: "选择 Key",
     engaged: "已接管",
     notEngaged: "未接管",
     portHint: "端口被占？点击换一个",
@@ -528,8 +526,7 @@ const zhTW: Messages = {
     clientDefault: "沿用 Client 設定",
     engage: "接管",
     release: "斷開",
-    engageAll: "全部接管",
-    releaseAll: "全部斷開",
+    swapProfile: "選 Key",
     engaged: "已接管",
     notEngaged: "未接管",
     portHint: "Port 被佔用？點一下換一個",
@@ -765,8 +762,7 @@ const ja: Messages = {
     clientDefault: "クライアント設定のまま",
     engage: "引き受け",
     release: "解除",
-    engageAll: "すべて引き受け",
-    releaseAll: "すべて解除",
+    swapProfile: "キーを選ぶ",
     engaged: "引き受け中",
     notEngaged: "待機中",
     portHint: "ポートが使用中？クリックで変更",
@@ -1002,8 +998,7 @@ const en: Messages = {
     clientDefault: "CLIENT DEFAULT",
     engage: "ENGAGE",
     release: "RELEASE",
-    engageAll: "ENGAGE ALL",
-    releaseAll: "RELEASE ALL",
+    swapProfile: "SELECT KEY",
     engaged: "ENGAGED",
     notEngaged: "STANDBY",
     portHint: "Port taken? Click to move",

@@ -525,7 +525,9 @@ const mockBridge: AgentGateBridge = {
 
   async reassignPort(): Promise<BootstrapData> {
     if (mockGateway.status === "running") throw new Error("请先关闭网关再更换端口");
-    mockGateway = { ...mockGateway, port: mockGateway.port + 1 };
+    // 和主进程一样随机取，不是 +1——否则预览里验到的是假行为
+    const port = 20_000 + Math.floor(Math.random() * 25_001);
+    mockGateway = { ...mockGateway, port };
     return clone({ profiles: mockProfiles, clients: mockClients, history: mockHistory, gateway: mockGateway });
   },
 

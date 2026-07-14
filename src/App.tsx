@@ -6,6 +6,7 @@ import { ConfirmDialog } from "./components/ConfirmDialog";
 import { KeyringView } from "./components/KeyringView";
 import { OverviewView } from "./components/OverviewView";
 import { ProfileEditor } from "./components/ProfileEditor";
+import { RollingNumber } from "./components/RollingNumber";
 import { SettingsView } from "./components/SettingsView";
 import { Toast } from "./components/Toast";
 import { APP_VERSION, DEFAULT_SETTINGS } from "./config";
@@ -163,16 +164,18 @@ function AppShell({ controller }: { controller: ReturnType<typeof useAgentGateCo
     setView("activity");
   }
 
-  const address = `127.0.0.1:${gateway.port}`;
-  const statusText = gateway.status === "starting"
-    ? `${m.overview.heroStarting} · ${address}`
+  /*
+   * 页脚状态：把数字（路由数、端口）从句子里拆出来单独交给滚轮，
+   * 其余文字走淡入。整句拼成一个字符串的话，数字只能跟着硬切。
+   */
+  const statusLabel = gateway.status === "starting"
+    ? m.overview.heroStarting
     : gateway.status === "stopping"
-      ? `${m.overview.heroStopping} · ${address}`
+      ? m.overview.heroStopping
       : gateway.status === "error"
-        ? `${m.overview.heroFault}${gateway.error ? ` · ${gateway.error}` : ""}`
-        : gatewayOn
-          ? `${m.gateway.online} · ${routeCount} ROUTES · ${address}`
-          : `${m.gateway.offline} · ${address}`;
+        ? m.overview.heroFault
+        : gatewayOn ? m.gateway.online : m.gateway.offline;
+  const statusError = gateway.status === "error" ? gateway.error : undefined;
   const statusDot = gateway.status === "error"
     ? "var(--bad)"
     : gateway.status === "running"
@@ -217,7 +220,8 @@ function AppShell({ controller }: { controller: ReturnType<typeof useAgentGateCo
             title={engagedCount > 0 ? undefined : m.overview.portHint}
             onClick={() => void controller.reassignPort()}
           >
-            <code>127.0.0.1:{gateway.port || 17863}</code>
+            {/* 换端口是「跳变」，走整卷慢滚——和分歧率、Token 一个待遇 */}
+            <RollingNumber value={`127.0.0.1:${gateway.port || 17863}`} />
           </button>
           {isDesktop && api.windowControl && (
             <div className="win-controls">
@@ -266,8 +270,6 @@ function AppShell({ controller }: { controller: ReturnType<typeof useAgentGateCo
             targets: [target],
           })}
           onRelease={(target) => void controller.stopGateway({ targets: [target] })}
-          onEngageAll={() => void controller.startGateway({ port: gateway.port || 17863 })}
-          onReleaseAll={() => void controller.stopGateway()}
           onGoActivity={goActivity}
         />
       )}
@@ -311,10 +313,29 @@ function AppShell({ controller }: { controller: ReturnType<typeof useAgentGateCo
       )}
 
       <footer className="status-footer" aria-live="polite">
-        <span><i className="status-dot" style={{ background: statusDot }} />{statusText}</span>
+        <span>
+          <i className="status-dot" style={{ background: statusDot }} />
+          <span key={statusLabel} className="swap-text">{statusLabel}</span>
+          {statusError
+            ? ` · ${statusError}`
+            : (
+              <>
+                {gatewayOn && (
+                  <>
+                    {" · "}
+                    <RollingNumber as="span" value={String(routeCount)} />
+                    {" ROUTES"}
+                  </>
+                )}
+                {" · "}
+                <RollingNumber as="span" value={`127.0.0.1:${gateway.port}`} />
+              </>
+            )}
+        </span>
         <span><ShieldCheck size={12} />{m.footer.sealed}</span>
         <span className="footer-right">
-          {controller.data.profiles.length} {m.footer.profiles} / 4 {m.footer.clients} · Agent;Gate {APP_VERSION}
+          <RollingNumber as="span" value={String(controller.data.profiles.length)} />
+          {" "}{m.footer.profiles} / 4 {m.footer.clients} · Agent;Gate {APP_VERSION}
           {!isDesktop && ` · ${m.footer.preview}`}
         </span>
       </footer>

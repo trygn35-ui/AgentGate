@@ -824,18 +824,25 @@ describe("GatewayService", () => {
     expect(service.isTargetEnabled("claude")).toBe(false);
   });
 
-  it("未运行时可以换一个空闲端口；运行中拒绝换，否则已写入的客户端配置会指向旧端口", async () => {
+  it("未运行时随机换一个空闲端口；运行中拒绝换，否则已写入的客户端配置会指向旧端口", async () => {
     const { service } = await createGateway({}, { initialize: true });
     const before = service.getPublicState().port;
 
     const next = await service.reassignPort();
     expect(next.port).not.toBe(before);
-    expect(next.port).toBeGreaterThan(1024);
+    // 落在随机区间内：避开系统端口，也避开 49152+ 的临时端口段
+    expect(next.port).toBeGreaterThanOrEqual(20_000);
+    expect(next.port).toBeLessThanOrEqual(45_000);
 
     // 换到的端口必须真的能绑上
     const probe = await listen((_request, response) => response.end(), next.port);
     expect(probe.port).toBe(next.port);
     await closeServer(probe.server);
+
+    // 是随机不是顺着爬：连摇几次不该总是同一个，也不该是 before+1、before+2……
+    const drawn = new Set();
+    for (let i = 0; i < 6; i += 1) drawn.add((await service.reassignPort()).port);
+    expect(drawn.size).toBeGreaterThan(1);
 
     await service.start({ port: 0 });
     await expect(service.reassignPort()).rejects.toThrow(/Stop the local gateway/);

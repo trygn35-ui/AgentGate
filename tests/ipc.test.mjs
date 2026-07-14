@@ -69,12 +69,18 @@ function createHarness({ gatewayRoutes = [], gatewayStatus, ...overrides } = {})
       stopGateway: vi.fn().mockResolvedValue({ skippedTargets: ["codex"] }),
     },
     gatewayService: {
+      // 形状必须跟真的 GatewayService.getPublicState() 一致——上面那条测试会拿真货来比对。
       getPublicState: vi.fn().mockImplementation(() => ({
         status: gatewayStatus ?? (gatewayRoutes.length > 0 ? "running" : "stopped"),
         host: "127.0.0.1",
         port: 17863,
         targets: gatewayRoutes.map((route) => route.target),
+        engaged: gatewayRoutes.map((route) => route.target),
         routes: gatewayRoutes,
+        localBaseUrls: Object.fromEntries(gatewayRoutes.map((route) => [
+          route.target,
+          `http://127.0.0.1:17863/${route.target}`,
+        ])),
       })),
       refreshProfile: vi.fn().mockImplementation(async () => {
         trace.push("refresh");
@@ -107,6 +113,34 @@ function saveInput(profile, overrides = {}) {
     ...overrides,
   };
 }
+
+describe("IPC bootstrap", () => {
+  it("网关状态的每个字段都要透传给渲染进程，一个都不能漏", async () => {
+    /*
+     * 真实事故：getBootstrap 原本逐字段手抄 getPublicState()，给网关状态新增
+     * engaged 后忘了跟着抄，桌面版拿到的 gateway 少了这个字段，渲染进程一读
+     * engaged.length 就白屏。而浏览器预览用 mock 数据、字段是全的，测不出来。
+     *
+     * 所以这里必须拿【真的】 GatewayService 产出的字段清单来比对——手写一份假的
+     * public state 只会和被测代码犯同一个错。
+     */
+    const { GatewayService, defaultGatewayStore } = require("../electron/services/gateway-service.cjs");
+    const real = new GatewayService({
+      profileService: { async getConnection() { throw new Error("unused"); } },
+      store: { async read() { return defaultGatewayStore(); }, async write(next) { return next; } },
+      vault: { encrypt: (v) => v, decrypt: (v) => v },
+    });
+    await real.initialize({ start: false });
+    const expectedKeys = Object.keys(real.getPublicState()).sort();
+
+    const { handlers } = createHarness();
+    const bootstrap = await handlers.get(CHANNELS.bootstrap)();
+    const actualKeys = Object.keys(bootstrap.gateway).sort();
+
+    const missing = expectedKeys.filter((key) => !actualKeys.includes(key));
+    expect(missing, `getBootstrap 漏传了网关字段：${missing.join(", ")}`).toEqual([]);
+  });
+});
 
 describe("IPC gateway coordination", () => {
   it("保存方案只刷新网关连接，不自动识别模型", async () => {

@@ -91,11 +91,15 @@ function registerIpcHandlers({
       }
     })
     const rawGateway = gatewayService.getPublicState()
+    /*
+     * 展开 rawGateway，别逐字段手抄。
+     *
+     * 这里原本是一个字段一个字段抄过来的，于是给网关状态新增 engaged 之后忘了跟着
+     * 抄，桌面版拿到的 gateway 就少了这个字段，渲染进程一读 engaged.length 直接白屏。
+     * 而浏览器预览用的是 mock 数据，字段是全的，所以怎么点都测不出来。
+     */
     const gateway = {
-      status: rawGateway.status,
-      host: rawGateway.host,
-      port: rawGateway.port,
-      targets: rawGateway.targets,
+      ...rawGateway,
       routes: rawGateway.routes.map((route) => {
         const profile = profiles.find((item) => item.id === route.profileId)
         return {
@@ -105,8 +109,6 @@ function registerIpcHandlers({
           activatedAt: rawGateway.startedAt || profile?.updatedAt || new Date(0).toISOString(),
         }
       }),
-      ...(rawGateway.startedAt ? { startedAt: rawGateway.startedAt } : {}),
-      ...(rawGateway.error ? { error: rawGateway.error } : {}),
     }
     return {
       profiles,

@@ -214,36 +214,33 @@ function defaultGatewayStore() {
   }
 }
 
+/** 随机端口的取值区间：避开系统端口，也避开 49152+ 的临时端口段。 */
+const PORT_MIN = 20000
+const PORT_MAX = 45000
+
 /**
- * 找一个空闲端口。
+ * 随机换一个空闲端口。
  *
- * 从默认端口的下一个开始往上扫，而不是直接要一个临时端口——临时端口在 49152+
- * 且每次重启都可能变，而这个端口要写进客户端配置文件，越稳定越好。扫不到就退回
- * 让系统随便给一个。
+ * 不从当前端口往上顺着扫——占端口的程序往往霸着一串连号，爬一格只会撞下一个。
+ * 直接在区间里随机取，绑一下试试，绑不上就再摇一个。
+ *
+ * 也不用系统分配的临时端口：那些在 49152+，且重启后容易被别的进程抢走，而这个
+ * 端口要写进客户端配置文件，得能稳定复用。
  */
-async function findFreePort(host, current = DEFAULT_GATEWAY_PORT, span = 40) {
+async function findFreePort(host, current = DEFAULT_GATEWAY_PORT, attempts = 25) {
   const canBind = (port) => new Promise((resolve) => {
     const probe = http.createServer()
     probe.once('error', () => resolve(false))
     probe.once('listening', () => probe.close(() => resolve(true)))
     probe.listen({ host, port, exclusive: true })
   })
-  const base = Number.isInteger(current) && current >= 1024 ? current : DEFAULT_GATEWAY_PORT
-  for (let offset = 1; offset <= span; offset += 1) {
-    const port = base + offset
-    if (port > 65535) break
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const port = PORT_MIN + Math.floor(Math.random() * (PORT_MAX - PORT_MIN + 1))
+    if (port === current) continue
     if (await canBind(port)) return port
   }
-  // 全被占了：退回系统分配
-  return new Promise((resolve, reject) => {
-    const probe = http.createServer()
-    probe.once('error', reject)
-    probe.once('listening', () => {
-      const { port } = probe.address()
-      probe.close(() => resolve(port))
-    })
-    probe.listen({ host, port: 0, exclusive: true })
-  })
+  throw new Error('Could not find a free port to move the local gateway to')
 }
 
 function normalizeTargets(targets) {

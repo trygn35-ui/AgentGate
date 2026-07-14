@@ -1,4 +1,4 @@
-import { ArrowRight, Repeat2 } from "lucide-react";
+import { ArrowRight, ChevronDown, Repeat2 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { CLIENT_META, CLIENT_TARGET_ORDER, PROTOCOL_META } from "../config";
@@ -76,8 +76,6 @@ interface OverviewViewProps {
   onEngage: (target: ClientTarget) => void;
   /** 只放掉这一个客户端。 */
   onRelease: (target: ClientTarget) => void;
-  onEngageAll: () => void;
-  onReleaseAll: () => void;
   onGoActivity: () => void;
 }
 
@@ -97,8 +95,6 @@ export function OverviewView({
   onApply,
   onEngage,
   onRelease,
-  onEngageAll,
-  onReleaseAll,
   onGoActivity,
 }: OverviewViewProps): ReactElement {
   const { m, fill } = useI18n();
@@ -139,12 +135,6 @@ export function OverviewView({
   const routeCount = gateway.routes
     .filter((route) => profiles.some((profile) => profile.id === route.profileId))
     .length;
-  // 已分配 = 有方案指向它；已接管 = 配置真的被改写成走网关
-  const assignedCount = gateway.routes.filter(
-    (route) => profiles.some((profile) => profile.id === route.profileId),
-  ).length;
-  const engagedCount = gateway.engaged.length;
-  const allEngaged = assignedCount > 0 && engagedCount >= assignedCount;
   const divergence = computeDivergence(profiles, gateway);
   const cacheRate = recentCacheRate(requests);
   const tokenToday = todayTokenTotal(profiles);
@@ -326,17 +316,21 @@ export function OverviewView({
                       </span>
                     </span>
                   </button>
-                  {/* 换方案独立成一个角标按钮，免得和「接管」抢同一次点击 */}
+                  {/*
+                    选 Key：卡片下面一条同宽的按钮，点开候选列表。
+                    和卡片本体（接管开关）分开，两者不抢同一次点击。
+                  */}
                   <button
                     type="button"
                     className={`socket-swap ${open ? "open" : ""}`}
-                    title={m.overview.clickToJump}
-                    aria-label={fill(m.overview.editToEnable, { client: CLIENT_META[target].label })}
                     aria-expanded={open}
+                    aria-label={fill(m.overview.editToEnable, { client: CLIENT_META[target].label })}
                     disabled={busy}
                     onClick={() => setPickerFor(open ? undefined : target)}
                   >
-                    <Repeat2 size={13} />
+                    <Repeat2 size={12} />
+                    <span key={boundName} className="swap-text">{m.overview.swapProfile}</span>
+                    <ChevronDown size={12} className={open ? "flip" : ""} />
                   </button>
                   {open && (
                     <PickerMenu label={m.overview.worldLines}>
@@ -382,22 +376,6 @@ export function OverviewView({
             })}
           </div>
 
-          {/*
-            总开关：和上面四张卡片同宽。承担原本右上角那个开关的职责——一次接管
-            全部已分配的客户端。逐个接管则点卡片本身。
-          */}
-          <button
-            type="button"
-            className={`master-switch ${allEngaged ? "on" : ""}`}
-            disabled={busy || assignedCount === 0}
-            onClick={() => (allEngaged ? onReleaseAll() : onEngageAll())}
-          >
-            <span className="socket-fill" aria-hidden="true" />
-            <span key={allEngaged ? "on" : "off"} className="swap-text">
-              {allEngaged ? m.overview.releaseAll : m.overview.engageAll}
-            </span>
-            <small>{engagedCount} / {assignedCount}</small>
-          </button>
         </section>
       </div>
     </main>
