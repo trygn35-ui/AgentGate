@@ -128,7 +128,10 @@ export interface GatewayState {
   status: GatewayRuntimeStatus;
   host: "127.0.0.1";
   port: number;
+  /** 已分配方案的客户端。 */
   targets: ClientTarget[];
+  /** 配置真的被改写成走网关的客户端；必为 targets 的子集。 */
+  engaged: ClientTarget[];
   routes: GatewayRoute[];
   startedAt?: string;
   error?: string;
@@ -139,6 +142,7 @@ export interface GatewayRuntimeEvent {
   host: "127.0.0.1";
   port: number;
   targets: ClientTarget[];
+  engaged: ClientTarget[];
   routes: Array<Pick<GatewayRoute, "target" | "profileId">>;
   localBaseUrls: Partial<Record<ClientTarget, string>>;
   startedAt?: string;
@@ -147,6 +151,13 @@ export interface GatewayRuntimeEvent {
 
 export interface GatewayStartSettings {
   port?: number;
+  /** 只接管这几个客户端；省略则接管全部已分配的。 */
+  targets?: ClientTarget[];
+}
+
+export interface GatewayStopSettings {
+  /** 只放掉这几个客户端；省略则全部放掉并停掉网关。 */
+  targets?: ClientTarget[];
 }
 
 export type AppTheme = "system" | "light" | "dark";
@@ -316,8 +327,9 @@ export interface AgentGateBridge {
   openConfig(target: ClientTarget): Promise<void>;
   /** 启动本地透明网关并接管已有方案分配的客户端。 */
   startGateway(settings: GatewayStartSettings): Promise<BootstrapData>;
+  reassignPort(): Promise<BootstrapData>;
   /** 恢复接管前的受管字段，保留方案分配并停止网关。 */
-  stopGateway(): Promise<BootstrapData>;
+  stopGateway(settings?: GatewayStopSettings): Promise<BootstrapData>;
   /** 更新应用行为设置。旧版 preload 可能暂未提供。 */
   updateSettings?(patch: Partial<AppSettings>): Promise<AppSettings | BootstrapData>;
   /** 无边框窗口的最小化/最大化/关闭控制。仅桌面环境提供。 */

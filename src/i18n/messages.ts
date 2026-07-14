@@ -51,6 +51,13 @@ export interface Messages {
     noCompatibleProfile: string;
     editToEnable: string;
     clientDefault: string;
+    engage: string;
+    release: string;
+    engageAll: string;
+    releaseAll: string;
+    engaged: string;
+    notEngaged: string;
+    portHint: string;
   };
   keys: {
     title: string;
@@ -96,6 +103,7 @@ export interface Messages {
     streaming: string;
     idle: string;
     retained: string;
+    capped: string;
     all: string;
     live: string;
     done: string;
@@ -198,6 +206,7 @@ export interface Messages {
     orderFailed: string;
     gatewayStarted: string;
     gatewayStopped: string;
+    portReassigned: string;
     gatewaySkipped: string;
     settingsSaved: string;
     modelsFound: string;
@@ -274,6 +283,13 @@ const zh: Messages = {
     noCompatibleProfile: "没有适配此客户端的方案",
     editToEnable: "编辑方案，勾选 {client}",
     clientDefault: "沿用客户端",
+    engage: "接管",
+    release: "断开",
+    engageAll: "接管全部",
+    releaseAll: "全部断开",
+    engaged: "已接管",
+    notEngaged: "未接管",
+    portHint: "端口被占？点击换一个",
   },
   keys: {
     title: "密钥",
@@ -319,6 +335,7 @@ const zh: Messages = {
     streaming: "{count} 个请求进行中",
     idle: "当前空闲",
     retained: "保留最近 1 小时",
+    capped: "仅显示最近 {shown} 条 · 另有 {hidden} 条保留中",
     all: "全部",
     live: "活跃",
     done: "完成",
@@ -421,6 +438,7 @@ const zh: Messages = {
     orderFailed: "当前版本不支持方案排序",
     gatewayStarted: "本地网关已启动，并接管已分配的客户端",
     gatewayStopped: "本地网关已停止",
+    portReassigned: "端口已换到 {port}",
     gatewaySkipped: "本地网关已停止；已跳过用户修改的 {targets}",
     settingsSaved: "设置已保存",
     modelsFound: "已识别 {count} 个可用模型",
@@ -502,6 +520,13 @@ const zhTW: Messages = {
     noCompatibleProfile: "沒有適用此用戶端的方案",
     editToEnable: "編輯方案，勾選 {client}",
     clientDefault: "沿用用戶端",
+    engage: "接管",
+    release: "斷開",
+    engageAll: "接管全部",
+    releaseAll: "全部斷開",
+    engaged: "已接管",
+    notEngaged: "未接管",
+    portHint: "連接埠被佔用？點擊換一個",
   },
   keys: {
     title: "金鑰",
@@ -547,6 +572,7 @@ const zhTW: Messages = {
     streaming: "{count} 個請求進行中",
     idle: "目前閒置",
     retained: "保留最近 1 小時",
+    capped: "僅顯示最近 {shown} 筆 · 另有 {hidden} 筆保留中",
     all: "全部",
     live: "活躍",
     done: "完成",
@@ -649,6 +675,7 @@ const zhTW: Messages = {
     orderFailed: "目前版本不支援方案排序",
     gatewayStarted: "本機閘道已啟動，並接管已指派的用戶端",
     gatewayStopped: "本機閘道已停止",
+    portReassigned: "連接埠已換到 {port}",
     gatewaySkipped: "本機閘道已停止；已略過使用者修改的 {targets}",
     settingsSaved: "設定已儲存",
     modelsFound: "已辨識 {count} 個可用模型",
@@ -730,6 +757,13 @@ const ja: Messages = {
     noCompatibleProfile: "対応するプロファイルがありません",
     editToEnable: "プロファイルを編集し {client} を選択",
     clientDefault: "クライアント既定",
+    engage: "接続",
+    release: "解除",
+    engageAll: "すべて接続",
+    releaseAll: "すべて解除",
+    engaged: "接続中",
+    notEngaged: "未接続",
+    portHint: "ポートが使用中？クリックで変更",
   },
   keys: {
     title: "キー",
@@ -775,6 +809,7 @@ const ja: Messages = {
     streaming: "{count} リクエスト進行中",
     idle: "アイドル",
     retained: "直近 1 時間を保持",
+    capped: "最新 {shown} 件を表示 · 他 {hidden} 件を保持",
     all: "全て",
     live: "実行中",
     done: "完了",
@@ -877,6 +912,7 @@ const ja: Messages = {
     orderFailed: "このバージョンは並替に未対応です",
     gatewayStarted: "ローカルゲートウェイを開始し、割当済みクライアントを引継ぎました",
     gatewayStopped: "ローカルゲートウェイを停止しました",
+    portReassigned: "ポートを {port} に変更しました",
     gatewaySkipped: "ゲートウェイを停止。ユーザー変更済みの {targets} はスキップしました",
     settingsSaved: "設定を保存しました",
     modelsFound: "{count} 件のモデルを検出しました",
@@ -958,6 +994,13 @@ const en: Messages = {
     noCompatibleProfile: "No compatible profile",
     editToEnable: "Edit a profile and enable {client}",
     clientDefault: "CLIENT DEFAULT",
+    engage: "ENGAGE",
+    release: "RELEASE",
+    engageAll: "ENGAGE ALL",
+    releaseAll: "RELEASE ALL",
+    engaged: "ENGAGED",
+    notEngaged: "STANDBY",
+    portHint: "Port taken? Click to move",
   },
   keys: {
     title: "Attractor Fields",
@@ -1003,6 +1046,7 @@ const en: Messages = {
     streaming: "{count} STREAMING",
     idle: "IDLE",
     retained: "LAST HOUR RETAINED",
+    capped: "SHOWING LATEST {shown} · {hidden} MORE RETAINED",
     all: "ALL",
     live: "LIVE",
     done: "DONE",
@@ -1105,6 +1149,7 @@ const en: Messages = {
     orderFailed: "This build does not support reordering",
     gatewayStarted: "Local gateway started and bound to assigned clients",
     gatewayStopped: "Local gateway stopped",
+    portReassigned: "Port moved to {port}",
     gatewaySkipped: "Gateway stopped; skipped user-edited {targets}",
     settingsSaved: "Settings saved",
     modelsFound: "Found {count} models",

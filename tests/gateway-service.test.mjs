@@ -226,6 +226,8 @@ describe("GatewayService", () => {
       enabled: true,
       port: 17863,
       targets: ["codex"],
+      // 老库没有 engaged 字段：当年「开着就全接管」，照此还原
+      engaged: ["codex"],
       routes: { codex: PROFILE_A },
       encryptedToken: "ciphertext",
     });
@@ -249,6 +251,7 @@ describe("GatewayService", () => {
       enabled: true,
       port: 17863,
       targets: ["codex", "claude", "gemini"],
+      engaged: ["codex", "claude", "gemini"],
       routes: { claude: PROFILE_A },
     });
   });
@@ -736,7 +739,7 @@ describe("GatewayService", () => {
     expect([...service.connectionCache.keys()]).toEqual([PROFILE_B]);
   });
 
-  it("运行中缩减 targets 会立即驱逐不再路由的明文连接缓存", async () => {
+  it("运行中放掉一个客户端：保留它的方案分配，但立即驱逐明文连接缓存", async () => {
     const profileA = {
       id: PROFILE_A,
       protocol: "openai-chat",
@@ -757,12 +760,85 @@ describe("GatewayService", () => {
     await service.activateRoutes(profileB, ["claude"]);
     expect([...service.connectionCache.keys()].sort()).toEqual([PROFILE_A, PROFILE_B]);
 
-    await service.start({ port: service.getPublicState().port, targets: ["codex"] });
+    // 只放掉 claude
+    await service.setEngagedTargets(["codex"]);
 
+    // 分配保留：下次一键接管还要用
     expect(service.getPublicState().routes).toEqual([
       { target: "codex", profileId: PROFILE_A },
+      { target: "claude", profileId: PROFILE_B },
     ]);
+    expect(service.getPublicState().engaged).toEqual(["codex"]);
+    // 但明文 Key 不能留在内存里：已经没有被接管的客户端指向 PROFILE_B 了
     expect([...service.connectionCache.keys()]).toEqual([PROFILE_A]);
+    expect(service.isTargetEnabled("claude")).toBe(false);
+    expect(service.isTargetEnabled("codex")).toBe(true);
+  });
+
+  it("接管是分配的子集：分配了不等于被接管", async () => {
+    const profile = {
+      id: PROFILE_A,
+      protocol: "openai-chat",
+      authMode: "bearer",
+      baseUrl: "http://127.0.0.1:1",
+      targets: ["codex", "claude"],
+    };
+    // 起步时什么都没接管
+    const { service } = await createGateway({
+      [PROFILE_A]: { profile, apiKey: "key-a" },
+    }, { targets: [] });
+    await service.activateRoutes(profile, ["codex", "claude"]);
+
+    // 分配了两个，但一个都还没接管
+    expect(service.getPublicState().targets.sort()).toEqual(["claude", "codex"]);
+    expect(service.getPublicState().engaged).toEqual([]);
+    expect(service.isTargetEnabled("codex")).toBe(false);
+
+    // 只接管 codex —— claude 的配置文件不该被碰
+    await service.setEngagedTargets(["codex"]);
+    expect(service.isTargetEnabled("codex")).toBe(true);
+    expect(service.isTargetEnabled("claude")).toBe(false);
+
+    // 越界的接管请求（没分配过的客户端）被丢掉，不会把它悄悄提升为已分配
+    await service.setEngagedTargets(["codex", "gemini"]);
+    expect(service.getPublicState().engaged).toEqual(["codex"]);
+    expect(service.getPublicState().targets.sort()).toEqual(["claude", "codex"]);
+  });
+
+  it("取消分配会连带取消接管，不留下指向空路由的接管项", async () => {
+    const profile = {
+      id: PROFILE_A,
+      protocol: "openai-chat",
+      authMode: "bearer",
+      baseUrl: "http://127.0.0.1:1",
+      targets: ["codex", "claude"],
+    };
+    const { service } = await createGateway({
+      [PROFILE_A]: { profile, apiKey: "key-a" },
+    });
+    await service.activateRoutes(profile, ["codex", "claude"]);
+    await service.setEngagedTargets(["codex", "claude"]);
+
+    await service.unassignRoutes(["claude"]);
+    expect(service.getPublicState().engaged).toEqual(["codex"]);
+    expect(service.isTargetEnabled("claude")).toBe(false);
+  });
+
+  it("未运行时可以换一个空闲端口；运行中拒绝换，否则已写入的客户端配置会指向旧端口", async () => {
+    const { service } = await createGateway({}, { initialize: true });
+    const before = service.getPublicState().port;
+
+    const next = await service.reassignPort();
+    expect(next.port).not.toBe(before);
+    expect(next.port).toBeGreaterThan(1024);
+
+    // 换到的端口必须真的能绑上
+    const probe = await listen((_request, response) => response.end(), next.port);
+    expect(probe.port).toBe(next.port);
+    await closeServer(probe.server);
+
+    await service.start({ port: 0 });
+    await expect(service.reassignPort()).rejects.toThrow(/Stop the local gateway/);
   });
 
   it("停止状态持久化失败时仍清除本地令牌和明文连接缓存", async () => {

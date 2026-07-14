@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, ReactElement } from "react";
 import { ActivityView } from "./components/ActivityView";
 import { ConfirmDialog } from "./components/ConfirmDialog";
-import { GatewaySwitch } from "./components/GatewaySwitch";
 import { KeyringView } from "./components/KeyringView";
 import { OverviewView } from "./components/OverviewView";
 import { ProfileEditor } from "./components/ProfileEditor";
@@ -70,6 +69,7 @@ function AppShell({ controller }: { controller: ReturnType<typeof useAgentGateCo
     && ["connecting", "waiting-first-token", "streaming"].includes(request.state)
   ));
   const gateway = controller.data.gateway;
+  const engagedCount = gateway.engaged.length;
   const gatewayOn = gateway.status === "running" || gateway.status === "starting";
   const routeCount = gateway.routes
     .filter((route) => controller.data.profiles.some((profile) => profile.id === route.profileId))
@@ -205,13 +205,20 @@ function AppShell({ controller }: { controller: ReturnType<typeof useAgentGateCo
           ))}
         </nav>
         <div className="topbar-side">
-          <code className="port-chip">127.0.0.1:{gateway.port || 17863}</code>
-          <GatewaySwitch
-            gateway={gateway}
-            busy={Boolean(controller.busy)}
-            onStart={() => void controller.startGateway({ port: gateway.port || 17863 })}
-            onStop={() => void controller.stopGateway()}
-          />
+          {/*
+            端口。默认端口被别的程序占住时，用户在界面上本来没有别的出路——
+            未接管任何客户端时点它就换一个空闲端口。运行中不能换：已写进客户端
+            配置的地址会指向旧端口。
+          */}
+          <button
+            type="button"
+            className="port-chip"
+            disabled={engagedCount > 0 || Boolean(controller.busy)}
+            title={engagedCount > 0 ? undefined : m.overview.portHint}
+            onClick={() => void controller.reassignPort()}
+          >
+            <code>127.0.0.1:{gateway.port || 17863}</code>
+          </button>
           {isDesktop && api.windowControl && (
             <div className="win-controls">
               <button
@@ -254,6 +261,13 @@ function AppShell({ controller }: { controller: ReturnType<typeof useAgentGateCo
           activeRequestCount={activeRequests.length}
           busy={Boolean(controller.busy)}
           onApply={(id, target) => void controller.applyProfile(id, [target])}
+          onEngage={(target) => void controller.startGateway({
+            port: gateway.port || 17863,
+            targets: [target],
+          })}
+          onRelease={(target) => void controller.stopGateway({ targets: [target] })}
+          onEngageAll={() => void controller.startGateway({ port: gateway.port || 17863 })}
+          onReleaseAll={() => void controller.stopGateway()}
           onGoActivity={goActivity}
         />
       )}

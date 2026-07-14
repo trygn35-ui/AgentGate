@@ -495,51 +495,22 @@ code, .num, [data-num] { font-variant-numeric: tabular-nums; }
 }
 
 .topbar-side { display: flex; align-items: center; gap: 9px; margin-left: auto; }
+/* 端口。未接管任何客户端时可点击换一个空闲端口——默认端口被占了总得有条出路。 */
 .port-chip {
   padding: 3px 8px;
   color: var(--ink-soft);
   background: var(--soft);
   border: 1px solid var(--line);
-  font-family: var(--mono);
-  font-size: var(--fs-xs);
-  letter-spacing: .06em;
-}
-
-/* 网关开关：铭牌 + 左边缘色条（抄游戏菜单） */
-.gateway-switch {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 32px;
-  padding: 0 11px 0 0;
-  color: var(--ink-soft);
-  background: var(--card);
-  border: 1px solid var(--line);
   cursor: pointer;
   font-family: var(--mono);
   font-size: var(--fs-xs);
-  font-weight: 600;
-  letter-spacing: .08em;
-  transition: border-color 180ms ease, color 180ms ease;
+  letter-spacing: .06em;
+  transition: border-color 140ms ease, color 140ms ease;
 }
-.gateway-switch::before {
-  content: "";
-  width: 3px;
-  align-self: stretch;
-  background: var(--line-strong);
-  transition: background 180ms ease;
-}
-.gateway-switch.on { color: var(--ink); border-color: var(--good); }
-.gateway-switch.on::before { background: var(--accent); }
-.gateway-switch.busy::before { background: var(--warn); animation: pulse 1.2s ease-in-out infinite; }
-.gateway-switch.error { color: var(--bad); border-color: var(--bad); }
-.gateway-switch.error::before { background: var(--bad); }
-.gateway-switch:disabled { opacity: .6; }
-.gateway-dot { width: 6px; height: 6px; background: var(--line-strong); }
-.gateway-switch.on .gateway-dot { background: var(--good); }
-[data-theme="dark"] .gateway-switch.on .gateway-dot { box-shadow: 0 0 7px var(--good); }
-.gateway-switch.error .gateway-dot { background: var(--bad); }
-.gateway-track { display: none; }
+.port-chip > code { font: inherit; letter-spacing: inherit; }
+.port-chip:hover:not(:disabled) { color: var(--ink); border-color: var(--accent); }
+/* 运行中不可换：已写进客户端配置的地址会指向旧端口 */
+.port-chip:disabled { cursor: default; }
 
 .win-controls { display: flex; align-items: center; gap: 2px; margin-left: 4px; }
 .win-controls button {
@@ -599,6 +570,21 @@ code, .num, [data-num] { font-variant-numeric: tabular-nums; }
   color: var(--ink-quiet);
 }
 .section-head .head-note { margin-left: 0; }
+
+/*
+ * 请求流能滚很长，页头钉在顶部——否则一往下滚，筛选器就够不着了。
+ *
+ * .page-inner 有 20px 上内边距：用负 margin 抵掉、再用等量 padding 补回来，
+ * 版式不变，但底色能一直铺到滚动容器的顶边，请求行才不会从缝里透出来。
+ */
+.sticky-head {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  margin-top: -20px;
+  padding-top: 20px;
+  background: var(--paper);
+}
 
 .text-link {
   display: inline-flex;
@@ -771,7 +757,7 @@ code, .num, [data-num] { font-variant-numeric: tabular-nums; }
   position: relative;
   display: block;
   width: 100%;
-  min-height: 104px;
+  min-height: 122px;
   padding: 11px 12px 11px 14px;
   color: var(--ink);
   background: var(--card);
@@ -792,9 +778,119 @@ code, .num, [data-num] { font-variant-numeric: tabular-nums; }
   background: var(--tone, var(--line-strong));
 }
 .socket-card.empty::before { opacity: .3; }
-.socket-card:hover { border-color: var(--tone, var(--accent)); }
+.socket-card:hover:not(:disabled) { border-color: var(--tone, var(--accent)); }
 .socket-card.picker-open { border-color: var(--tone, var(--accent)); }
 .socket-card.flash { animation: pop-in 400ms cubic-bezier(.2, .9, .25, 1); }
+.socket-card:disabled { cursor: default; }
+.socket-card.engaged { border-color: var(--tone, var(--accent)); }
+
+/*
+ * 接管填充：由下往上涨满，断开时原路退回去。
+ *
+ * 用 scaleY + transform-origin: bottom，走的是合成层，不会每帧重排；
+ * 换成动画 height 会把整张卡片的布局带着抖。涨起来比退下去慢一点——
+ * 接管是「注入」，要有分量；断开是「抽离」，干脆些。
+ */
+.socket-fill {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  transform: scaleY(0);
+  transform-origin: bottom;
+  transition: transform 240ms cubic-bezier(.4, 0, .7, .2);
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--tone, var(--accent)) 22%, transparent),
+    color-mix(in srgb, var(--tone, var(--accent)) 7%, transparent)
+  );
+}
+.socket-card.engaged .socket-fill,
+.master-switch.on .socket-fill {
+  transform: scaleY(1);
+  transition: transform 620ms cubic-bezier(.16, .84, .3, 1);
+}
+/* 卡片内容压在填充之上 */
+.socket-no,
+.socket-title,
+.socket-profile,
+.socket-state { position: relative; z-index: 1; }
+
+/*
+ * 接管状态铭牌。
+ *
+ * 不能绝对定位到右下角——那会盖住同在底部的 URL。让它在文档流里独占一行，
+ * 卡片的最小高度已经为它留出了空间。
+ */
+.socket-state {
+  display: block;
+  margin-top: 7px;
+  font-family: var(--mono);
+  font-size: var(--fs-label);
+  font-weight: 600;
+  letter-spacing: .1em;
+  color: var(--ink-quiet);
+  transition: color 260ms ease;
+}
+.socket-state.on { color: var(--tone, var(--accent-ink)); }
+
+/* 换方案：卡片角上的独立按钮，不跟「接管」抢同一次点击 */
+.socket-swap {
+  position: absolute;
+  top: 7px;
+  right: 32px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  color: var(--ink-quiet);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: color 130ms ease, border-color 130ms ease;
+}
+.socket-swap:hover:not(:disabled),
+.socket-swap.open { color: var(--tone, var(--accent-ink)); border-color: var(--line); }
+.socket-swap:disabled { opacity: .4; }
+
+/* 总开关：与上方四张卡片同宽，承担原顶栏开关的职责 */
+.master-switch {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 42px;
+  margin-top: 8px;
+  padding: 0 14px;
+  color: var(--ink-soft);
+  background: var(--card);
+  border: 1px solid var(--line);
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  letter-spacing: .1em;
+  transition: border-color 180ms ease, color 180ms ease;
+  animation: rise 300ms cubic-bezier(.2, .9, .25, 1) 260ms backwards;
+}
+.master-switch { --tone: var(--accent); }
+.master-switch:hover:not(:disabled) { color: var(--ink); border-color: var(--accent); }
+.master-switch.on { color: var(--ink); border-color: var(--good); }
+.master-switch:disabled { opacity: .5; cursor: not-allowed; }
+.master-switch > span:not(.socket-fill),
+.master-switch > small { position: relative; z-index: 1; }
+.master-switch > small {
+  font-size: var(--fs-label);
+  font-weight: 500;
+  letter-spacing: .06em;
+  color: var(--ink-quiet);
+  font-variant-numeric: tabular-nums;
+}
 .socket-no {
   position: absolute;
   top: 9px;

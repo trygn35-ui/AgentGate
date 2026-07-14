@@ -3,6 +3,7 @@ import type {
   ClientStatus,
   ClientTarget,
   GatewayStartSettings,
+  GatewayStopSettings,
   GatewayState,
   HistoryEntry,
   AgentGateBridge,
@@ -167,6 +168,7 @@ let mockGateway: GatewayState = {
   status: "stopped",
   host: "127.0.0.1",
   port: 17863,
+  engaged: [],
   targets: ["claude", "opencode"],
   routes: ["claude", "opencode"].map((target) => ({
     target: target as ClientTarget,
@@ -488,15 +490,21 @@ const mockBridge: AgentGateBridge = {
     if (mockGateway.routes.length === 0) throw new Error("请先把方案分配给至少一个客户端");
     const timestamp = new Date().toISOString();
     const port = settings.port ?? mockGateway.port ?? 17863;
+    const assigned = mockGateway.routes.map((route) => route.target);
+    // 只接管点名的；省略则全部接管。已接管的保持不变。
+    const requested = settings.targets?.filter((target) => assigned.includes(target)) ?? assigned;
+    const engaged = [...new Set([...mockGateway.engaged, ...requested])];
     mockGateway = {
       status: "running",
       host: "127.0.0.1",
       port,
-      targets: mockGateway.routes.map((route) => route.target),
+      targets: assigned,
+      engaged,
       routes: mockGateway.routes,
-      startedAt: timestamp,
+      startedAt: mockGateway.startedAt ?? timestamp,
     };
     mockClients = mockClients.map((client) => {
+      if (!engaged.includes(client.target)) return client;
       const route = mockGateway.routes.find((item) => item.target === client.target);
       if (!route) return client;
       if (!mockClientBaselines[client.target]) {
@@ -515,17 +523,29 @@ const mockBridge: AgentGateBridge = {
     return clone({ profiles: mockProfiles, clients: mockClients, history: mockHistory, gateway: mockGateway });
   },
 
-  async stopGateway(): Promise<BootstrapData> {
+  async reassignPort(): Promise<BootstrapData> {
+    if (mockGateway.status === "running") throw new Error("请先关闭网关再更换端口");
+    mockGateway = { ...mockGateway, port: mockGateway.port + 1 };
+    return clone({ profiles: mockProfiles, clients: mockClients, history: mockHistory, gateway: mockGateway });
+  },
+
+  async stopGateway(settings?: GatewayStopSettings): Promise<BootstrapData> {
+    const releasing = settings?.targets?.filter((target) => mockGateway.engaged.includes(target))
+      ?? [...mockGateway.engaged];
     mockClients = mockClients.map((client) => {
+      if (!releasing.includes(client.target)) return client;
       const baseline = mockClientBaselines[client.target];
+      delete mockClientBaselines[client.target];
       return baseline ? clone(baseline) : client;
     });
-    mockClientBaselines = {};
+    const engaged = mockGateway.engaged.filter((target) => !releasing.includes(target));
     mockGateway = {
-      status: "stopped",
+      // 还有客户端接管着就继续跑
+      status: engaged.length > 0 ? "running" : "stopped",
       host: "127.0.0.1",
       port: mockGateway.port,
       targets: mockGateway.targets,
+      engaged,
       routes: mockGateway.routes,
     };
     return clone({ profiles: mockProfiles, clients: mockClients, history: mockHistory, gateway: mockGateway });

@@ -82,6 +82,7 @@ export const EMPTY_BOOTSTRAP: BootstrapData = {
     host: "127.0.0.1",
     port: 17863,
     targets: [],
+    engaged: [],
     routes: [],
   },
   settings: DEFAULT_SETTINGS,

@@ -154,6 +154,14 @@ const CanonicalGatewayStoreSchema = z.object({
   enabled: z.boolean(),
   port: z.number().int().min(1).max(65535),
   targets: z.array(z.enum(TARGETS)).max(TARGETS.length),
+  /**
+   * 已接管的客户端，必为 targets 的子集。
+   *
+   * targets（= routes 的键）只是「分配了方案」，engaged 才是「配置真的被改写成
+   * 走网关」。两者原本是同一个集合，于是一开网关就把所有分配过的客户端全接管了，
+   * 连不想动的也一起改。拆开之后可以只接管其中一个。
+   */
+  engaged: z.array(z.enum(TARGETS)).max(TARGETS.length),
   routes: z.record(z.enum(TARGETS), ProfileIdSchema),
   encryptedToken: z.string().optional(),
   encryptedRouteToken: z.string().optional(),
@@ -166,13 +174,22 @@ function migrateGatewayStore(value) {
     ? value.targets.filter((target) => TARGET_SET.has(target))
     : []
   const targets = [...new Set([...explicitTargets, ...Object.keys(routes)])]
+  const targetSet = new Set(targets)
+  const enabled = value.enabled === true
+  // 老库没有 engaged 字段。它当年的语义就是「开着就全接管」——照此还原，
+  // 升级后的第一次启动行为不变，不会凭空多接管或少接管一个客户端。
+  const engaged = (Array.isArray(value.engaged)
+    ? value.engaged.filter((target) => TARGET_SET.has(target))
+    : enabled ? targets : []
+  ).filter((target) => targetSet.has(target))
   const normalized = {
     version: GATEWAY_VERSION,
-    enabled: value.enabled === true,
+    enabled,
     port: Number.isInteger(value.port) && value.port >= 1 && value.port <= 65535
       ? value.port
       : DEFAULT_GATEWAY_PORT,
     targets,
+    engaged: [...new Set(engaged)],
     routes,
   }
   if (typeof value.encryptedToken === 'string' && value.encryptedToken) {
@@ -192,8 +209,41 @@ function defaultGatewayStore() {
     enabled: false,
     port: DEFAULT_GATEWAY_PORT,
     targets: [],
+    engaged: [],
     routes: {},
   }
+}
+
+/**
+ * 找一个空闲端口。
+ *
+ * 从默认端口的下一个开始往上扫，而不是直接要一个临时端口——临时端口在 49152+
+ * 且每次重启都可能变，而这个端口要写进客户端配置文件，越稳定越好。扫不到就退回
+ * 让系统随便给一个。
+ */
+async function findFreePort(host, current = DEFAULT_GATEWAY_PORT, span = 40) {
+  const canBind = (port) => new Promise((resolve) => {
+    const probe = http.createServer()
+    probe.once('error', () => resolve(false))
+    probe.once('listening', () => probe.close(() => resolve(true)))
+    probe.listen({ host, port, exclusive: true })
+  })
+  const base = Number.isInteger(current) && current >= 1024 ? current : DEFAULT_GATEWAY_PORT
+  for (let offset = 1; offset <= span; offset += 1) {
+    const port = base + offset
+    if (port > 65535) break
+    if (await canBind(port)) return port
+  }
+  // 全被占了：退回系统分配
+  return new Promise((resolve, reject) => {
+    const probe = http.createServer()
+    probe.once('error', reject)
+    probe.once('listening', () => {
+      const { port } = probe.address()
+      probe.close(() => resolve(port))
+    })
+    probe.listen({ host, port: 0, exclusive: true })
+  })
 }
 
 function normalizeTargets(targets) {
@@ -423,9 +473,35 @@ class GatewayService {
     })
   }
 
-  async _startLoaded({ port = this.persisted.port, targets = this.persisted.targets } = {}) {
+  /**
+   * @param options.engage 要接管的客户端。省略时沿用已接管的集合；接管集合必须是
+   *   已分配集合（targets）的子集，越界的项会被丢掉而不是把它们悄悄提升为已分配。
+   */
+  async _startLoaded({
+    port = this.persisted.port,
+    engage,
+    targets,
+  } = {}) {
     const requestedPort = validatePort(port, true)
-    const requestedTargets = normalizeTargets(targets)
+
+    /*
+     * 两种入口：
+     * - engage：只接管这些（必须已分配）。apply-service 走这条。
+     * - targets：旧签名，「暂存并接管这些」。保留它，因为启动时预暂存客户端
+     *   （此时还没有任何路由分配）仍是合法用法。
+     */
+    if (targets !== undefined) {
+      const staged = normalizeTargets(targets)
+      this.persisted = await this.store.write({
+        ...this.persisted,
+        targets: [...new Set([...this.persisted.targets, ...staged])],
+      })
+    }
+    const assigned = new Set(this.persisted.targets)
+    const requestedEngaged = normalizeTargets(
+      engage ?? targets ?? this.persisted.engaged,
+    ).filter((target) => assigned.has(target))
+
     if (this.server) {
       const currentPort = this.persisted.port
       if (requestedPort !== 0 && requestedPort !== currentPort) {
@@ -434,8 +510,7 @@ class GatewayService {
         this.persisted = await this.store.write({
           ...this.persisted,
           enabled: true,
-          targets: requestedTargets,
-          routes: this._routesForTargets(this.persisted.routes, requestedTargets),
+          engaged: requestedEngaged,
         })
         this._evictUnroutedConnections()
         this.status = 'running'
@@ -502,8 +577,9 @@ class GatewayService {
           version: GATEWAY_VERSION,
           enabled: true,
           port: boundPort,
-          targets: requestedTargets,
-          routes: this._routesForTargets(this.persisted.routes, requestedTargets),
+          targets: this.persisted.targets,
+          engaged: requestedEngaged,
+          routes: this.persisted.routes,
           encryptedToken: this.persisted.encryptedToken || this.vault.encrypt(token),
           encryptedRouteToken: this.persisted.encryptedRouteToken
             || this.vault.encrypt(routeToken),
@@ -541,6 +617,8 @@ class GatewayService {
           ...this.persisted,
           enabled: false,
           targets: clearRoutes ? [] : this.persisted.targets,
+          // 服务器停了就没有任何客户端还被接管着
+          engaged: [],
           routes: clearRoutes ? {} : this.persisted.routes,
         })
         this.status = 'stopped'
@@ -596,6 +674,7 @@ class GatewayService {
       host: this.host,
       port,
       targets,
+      engaged: [...this.persisted.engaged],
       routes: Object.entries(this.persisted.routes).map(([target, profileId]) => ({
         target,
         profileId,
@@ -730,6 +809,8 @@ class GatewayService {
       this.persisted = await this.store.write({
         ...this.persisted,
         targets: nextTargets,
+        // 取消分配的同时必须取消接管，否则会留下一个指向空路由的接管项
+        engaged: this.persisted.engaged.filter((target) => !selected.has(target)),
         routes,
       })
       this._evictUnroutedConnections()
@@ -745,9 +826,12 @@ class GatewayService {
       const targets = Array.isArray(snapshot?.targets)
         ? normalizeTargets(snapshot.targets)
         : [...new Set([...this.persisted.targets, ...Object.keys(routes)])]
+      const assigned = new Set(targets)
       this.persisted = await this.store.write({
         ...this.persisted,
         targets,
+        // 回滚后接管集合可能指向已经不存在的分配，收回到子集内
+        engaged: this.persisted.engaged.filter((target) => assigned.has(target)),
         routes: this._routesForTargets(routes, targets),
       })
       this._evictUnroutedConnections()
@@ -761,7 +845,44 @@ class GatewayService {
   isTargetEnabled(target) {
     return this.status === 'running'
       && Boolean(this.server)
-      && this.persisted.targets.includes(target)
+      && this.persisted.engaged.includes(target)
+  }
+
+  /**
+   * 运行期增删接管的客户端，不重启服务器。
+   *
+   * target 只是 URL 路径上的一段，isTargetEnabled 是运行期闸门——增删它不影响
+   * 已建立的连接，也不必换端口或重新签发令牌。越界（未分配方案）的项直接丢掉。
+   */
+  async setEngagedTargets(targets) {
+    return this.serial.run(async () => {
+      await this._ensureLoaded()
+      const assigned = new Set(this.persisted.targets)
+      const next = normalizeTargets(targets).filter((target) => assigned.has(target))
+      this.persisted = await this.store.write({ ...this.persisted, engaged: next })
+      // 放掉客户端后，指向它的方案明文不该继续留在缓存里
+      this._evictUnroutedConnections()
+      this._notify()
+      return this.getPublicState()
+    })
+  }
+
+  /**
+   * 换一个空闲端口。默认端口被别的程序占住时，用户在界面上本来没有别的出路。
+   *
+   * 只在未运行时可用——运行中换端口会让已写进客户端配置的地址指向旧端口。
+   */
+  async reassignPort() {
+    return this.serial.run(async () => {
+      await this._ensureLoaded()
+      if (this.status === 'running' || this.server) {
+        throw new Error('Stop the local gateway before changing its port')
+      }
+      const port = await findFreePort(this.host, this.persisted.port)
+      this.persisted = await this.store.write({ ...this.persisted, port })
+      this._notify()
+      return this.getPublicState()
+    })
   }
 
   activeTargetsForProfile(profileOrId) {
@@ -844,10 +965,20 @@ class GatewayService {
     this._evictUnroutedConnections()
   }
 
+  /**
+   * 缓存里放的是解密后的明文 Key，按「还在被接管吗」驱逐，而不是「还有分配吗」。
+   *
+   * 分配（routes）在断开接管后仍然保留，好让下次一键接管；但只要没有任何被接管
+   * 的客户端指向某个方案，它的明文就没有理由继续留在内存里。
+   */
   _evictUnroutedConnections() {
-    const routedProfileIds = new Set(Object.values(this.persisted.routes))
+    const liveProfileIds = new Set(
+      this.persisted.engaged
+        .map((target) => this.persisted.routes[target])
+        .filter(Boolean),
+    )
     for (const profileId of this.connectionCache.keys()) {
-      if (!routedProfileIds.has(profileId)) this.connectionCache.delete(profileId)
+      if (!liveProfileIds.has(profileId)) this.connectionCache.delete(profileId)
     }
   }
 

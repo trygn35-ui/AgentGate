@@ -1,4 +1,4 @@
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Repeat2 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { CLIENT_META, CLIENT_TARGET_ORDER, PROTOCOL_META } from "../config";
@@ -72,6 +72,12 @@ interface OverviewViewProps {
   activeRequestCount: number;
   busy: boolean;
   onApply: (id: string, target: ClientTarget) => void;
+  /** 只接管这一个客户端。 */
+  onEngage: (target: ClientTarget) => void;
+  /** 只放掉这一个客户端。 */
+  onRelease: (target: ClientTarget) => void;
+  onEngageAll: () => void;
+  onReleaseAll: () => void;
   onGoActivity: () => void;
 }
 
@@ -89,6 +95,10 @@ export function OverviewView({
   activeRequestCount,
   busy,
   onApply,
+  onEngage,
+  onRelease,
+  onEngageAll,
+  onReleaseAll,
   onGoActivity,
 }: OverviewViewProps): ReactElement {
   const { m, fill } = useI18n();
@@ -129,6 +139,12 @@ export function OverviewView({
   const routeCount = gateway.routes
     .filter((route) => profiles.some((profile) => profile.id === route.profileId))
     .length;
+  // 已分配 = 有方案指向它；已接管 = 配置真的被改写成走网关
+  const assignedCount = gateway.routes.filter(
+    (route) => profiles.some((profile) => profile.id === route.profileId),
+  ).length;
+  const engagedCount = gateway.engaged.length;
+  const allEngaged = assignedCount > 0 && engagedCount >= assignedCount;
   const divergence = computeDivergence(profiles, gateway);
   const cacheRate = recentCacheRate(requests);
   const tokenToday = todayTokenTotal(profiles);
@@ -251,6 +267,7 @@ export function OverviewView({
                 "socket-card",
                 `tone-${CLIENT_META[target].tone}`,
                 profile ? "" : "empty",
+                gateway.engaged.includes(target) ? "engaged" : "",
                 open ? "picker-open" : "",
                 flashTarget === target ? "flash" : "",
               ].filter(Boolean).join(" ");
@@ -267,16 +284,29 @@ export function OverviewView({
                       ? m.overview.clientNotDetected
                       : m.overview.noProfileBound;
               const boundName = profile?.name ?? route?.profileName ?? m.overview.unbound;
+              const hasProfile = Boolean(profile);
+              const engaged = gateway.engaged.includes(target);
               return (
                 <div className="socket-cell" key={target}>
                   <button
                     type="button"
                     className={cardClass}
                     style={{ animationDelay: `${80 + index * 45}ms` }}
-                    aria-label={fill(m.overview.editToEnable, { client: CLIENT_META[target].label })}
-                    aria-expanded={open}
-                    onClick={() => setPickerFor(open ? undefined : target)}
+                    aria-pressed={engaged}
+                    aria-label={hasProfile
+                      ? fill(engaged ? m.overview.release : m.overview.engage,
+                        { client: CLIENT_META[target].label })
+                      : fill(m.overview.editToEnable, { client: CLIENT_META[target].label })}
+                    disabled={busy}
+                    onClick={() => {
+                      // 还没分配方案的客户端点了先选方案——没方案可接管
+                      if (!hasProfile) setPickerFor(open ? undefined : target);
+                      else if (engaged) onRelease(target);
+                      else onEngage(target);
+                    }}
                   >
+                    {/* 接管时由下往上涨满，断开时退回去 */}
+                    <span className="socket-fill" aria-hidden="true" />
                     <span className="socket-no">{String(index + 1).padStart(2, "0")}</span>
                     <span className="socket-title">
                       <strong>{CLIENT_META[target].label.toUpperCase()}</strong>
@@ -290,6 +320,23 @@ export function OverviewView({
                         {detail}
                       </code>
                     </span>
+                    <span className={`socket-state ${engaged ? "on" : ""}`}>
+                      <span key={engaged ? "on" : "off"} className="swap-text">
+                        {engaged ? m.overview.engaged : m.overview.notEngaged}
+                      </span>
+                    </span>
+                  </button>
+                  {/* 换方案独立成一个角标按钮，免得和「接管」抢同一次点击 */}
+                  <button
+                    type="button"
+                    className={`socket-swap ${open ? "open" : ""}`}
+                    title={m.overview.clickToJump}
+                    aria-label={fill(m.overview.editToEnable, { client: CLIENT_META[target].label })}
+                    aria-expanded={open}
+                    disabled={busy}
+                    onClick={() => setPickerFor(open ? undefined : target)}
+                  >
+                    <Repeat2 size={13} />
                   </button>
                   {open && (
                     <PickerMenu label={m.overview.worldLines}>
@@ -334,6 +381,23 @@ export function OverviewView({
               );
             })}
           </div>
+
+          {/*
+            总开关：和上面四张卡片同宽。承担原本右上角那个开关的职责——一次接管
+            全部已分配的客户端。逐个接管则点卡片本身。
+          */}
+          <button
+            type="button"
+            className={`master-switch ${allEngaged ? "on" : ""}`}
+            disabled={busy || assignedCount === 0}
+            onClick={() => (allEngaged ? onReleaseAll() : onEngageAll())}
+          >
+            <span className="socket-fill" aria-hidden="true" />
+            <span key={allEngaged ? "on" : "off"} className="swap-text">
+              {allEngaged ? m.overview.releaseAll : m.overview.engageAll}
+            </span>
+            <small>{engagedCount} / {assignedCount}</small>
+          </button>
         </section>
       </div>
     </main>

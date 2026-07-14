@@ -36,6 +36,9 @@ function requestMeta(m: Messages): Record<ActiveRequest["state"], RequestMeta> {
   };
 }
 
+/** 最多渲染多少行。数据仍保留一小时，这里只是渲染窗口。 */
+const MAX_VISIBLE_ROWS = 50;
+
 const REASONING_LABEL: Record<string, string> = {
   minimal: "MIN",
   low: "LOW",
@@ -114,10 +117,15 @@ export function ActivityView({ requests }: ActivityViewProps): ReactElement {
   const [filter, setFilter] = useState<RequestFilter>("all");
   const [now, setNow] = useState(() => Date.now());
   const activeCount = requests.filter(isActive).length;
-  const visibleRequests = useMemo(
+  const matched = useMemo(
     () => requests.filter((request) => matchesFilter(request, filter)),
     [filter, requests],
   );
+  // 记录保留一小时（可达 2000 条），但只渲染最近这些。每行有六个滚轮读数、
+  // 每个读数又是若干字位，全渲染会堆出几万个节点并让每次 300ms 的计时刷新
+  // 扫过全部——数据不动，只收窄渲染窗口。
+  const visibleRequests = useMemo(() => matched.slice(0, MAX_VISIBLE_ROWS), [matched]);
+  const hiddenCount = matched.length - visibleRequests.length;
   const meta = useMemo(() => requestMeta(m), [m]);
   const clock = useMemo(() => new Intl.DateTimeFormat(locale, {
     hour: "2-digit",
@@ -137,7 +145,7 @@ export function ActivityView({ requests }: ActivityViewProps): ReactElement {
   return (
     <main className="page-scroll" aria-label={m.stream.title}>
       <div className="page-inner">
-        <div className="section-head rise" style={{ alignItems: "center" }}>
+        <div className="section-head rise sticky-head" style={{ alignItems: "center" }}>
           <h1>{m.stream.title}</h1>
           <span className="head-note">
             <span key={liveText} className="swap-text">{liveText}</span> · {m.stream.retained}
@@ -234,6 +242,11 @@ export function ActivityView({ requests }: ActivityViewProps): ReactElement {
           {visibleRequests.length === 0 && (
             <p className="feed-empty">
               {requests.length === 0 ? m.stream.empty : m.stream.noMatch}
+            </p>
+          )}
+          {hiddenCount > 0 && (
+            <p className="feed-empty">
+              {fill(m.stream.capped, { shown: visibleRequests.length, hidden: hiddenCount })}
             </p>
           )}
         </div>

@@ -179,35 +179,60 @@ class ApplyService {
    * @param {{port?: number}} settings 启动参数。
    * @returns {Promise<object>} 网关公开状态。
    */
+  /**
+   * 接管客户端：改写它们的配置指向本地网关，必要时先把网关跑起来。
+   *
+   * @param settings.targets 要接管哪些客户端。省略时接管全部已分配的——这是
+   *   「全部接管」按钮的语义。指定子集时只碰这几个，其余客户端的配置一个字节
+   *   都不动，这样就不会把用户不想改的一起改了。
+   */
   async startGateway(settings = {}) {
     if (!this.gatewayService) throw new Error('Local gateway is unavailable')
     return this.serial.run(async () => {
-      if (this.gatewayService.getPublicState().status === 'running') {
-        return this.gatewayService.getPublicState()
-      }
       const groups = this.gatewayService.getRouteGroups()
       if (groups.length === 0) {
         throw new Error('Assign at least one profile before starting the local gateway')
       }
+      const assigned = new Set(groups.flatMap((group) => group.targets))
+      const requested = settings.targets === undefined
+        ? [...assigned]
+        : settings.targets.filter((target) => assigned.has(target))
+      if (requested.length === 0) {
+        throw new Error('Assign a profile to this client before engaging it')
+      }
+
+      const state = this.gatewayService.getPublicState()
+      const alreadyEngaged = new Set(state.status === 'running' ? state.engaged : [])
+      // 已接管的不用重写一遍配置——它们的备份基线也不能被再次覆盖
+      const fresh = requested.filter((target) => !alreadyEngaged.has(target))
+      if (fresh.length === 0) return state
+
       const entries = []
       for (const group of groups) {
-        const connection = await this.profileService.getConnection(group.profileId)
         for (const target of group.targets) {
+          if (!fresh.includes(target)) continue
+          const connection = await this.profileService.getConnection(group.profileId)
           this._assertProfileTarget(connection.profile, target)
           entries.push({ ...connection, target })
         }
       }
-      const stagedTargets = [...new Set(groups.flatMap((group) => group.targets))]
+
+      const nextEngaged = [...new Set([...alreadyEngaged, ...fresh])]
       await this.gatewayService.start({
         ...(settings.port === undefined ? {} : { port: settings.port }),
-        targets: stagedTargets,
+        engage: nextEngaged,
       })
       try {
         await this._writeGatewayEntries(entries, { replaceBaselines: true })
         return this.gatewayService.getPublicState()
       } catch (error) {
         if (!error?.rollbackIncomplete) {
-          await this.gatewayService.stop({ clearRoutes: false }).catch(() => {})
+          // 只回退这次新接管的；之前就接管着的客户端不该被牵连着放掉
+          if (alreadyEngaged.size > 0) {
+            await this.gatewayService.setEngagedTargets([...alreadyEngaged]).catch(() => {})
+          } else {
+            await this.gatewayService.stop({ clearRoutes: false }).catch(() => {})
+          }
         }
         throw error
       }
@@ -219,11 +244,27 @@ class ApplyService {
    *
    * @returns {Promise<object>} 停止后的网关公开状态及跳过的目标 ID。
    */
-  async stopGateway() {
+  async stopGateway(settings = {}) {
     if (!this.gatewayService) throw new Error('Local gateway is unavailable')
     return this.serial.run(async () => {
-      const groups = this.gatewayService.getRouteGroups()
+      const allGroups = this.gatewayService.getRouteGroups()
       const gatewayState = this.gatewayService.getPublicState()
+      // 只放掉被点名的客户端；省略时放掉全部（「全部断开」按钮）
+      const engaged = new Set(gatewayState.engaged || [])
+      const releasing = new Set(settings.targets === undefined
+        ? engaged
+        : settings.targets.filter((target) => engaged.has(target)))
+      if (releasing.size === 0) return { ...gatewayState, skippedTargets: [] }
+
+      // 恢复流程按 group 走，把它裁剪到只剩要放掉的客户端
+      const groups = allGroups
+        .map((group) => ({
+          ...group,
+          targets: group.targets.filter((target) => releasing.has(target)),
+        }))
+        .filter((group) => group.targets.length > 0)
+
+      const remaining = [...engaged].filter((target) => !releasing.has(target))
       const encryptedToken = this.gatewayService.persisted?.encryptedToken
       let localToken = this.gatewayService.localToken
       if (!localToken && encryptedToken) {
@@ -256,7 +297,10 @@ class ApplyService {
         const targets = groups.flatMap((group) => group.targets).join(', ')
         throw new Error(`Configuration kept changing while stopping the gateway: ${targets}`)
       }
-      const state = await this.gatewayService.stop({ clearRoutes: false })
+      // 还有客户端接管着就让服务器继续跑，只把这几个从接管集合里摘掉
+      const state = remaining.length > 0
+        ? await this.gatewayService.setEngagedTargets(remaining)
+        : await this.gatewayService.stop({ clearRoutes: false })
       const nextBaselines = { ...baselineData.baselines }
       for (const target of recovery.clearedTargets) delete nextBaselines[target]
       await this.gatewayBaselineStore.write({

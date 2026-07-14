@@ -8,6 +8,7 @@ import type {
   ClientTarget,
   AppSettings,
   GatewayStartSettings,
+  GatewayStopSettings,
   Profile,
   SaveProfileInput,
   StateChangedEvent,
@@ -38,7 +39,8 @@ export interface AgentGateController {
   copyKey: (profile: Profile) => Promise<void>;
   openConfig: (target: ClientTarget) => Promise<void>;
   startGateway: (settings: GatewayStartSettings) => Promise<void>;
-  stopGateway: () => Promise<void>;
+  stopGateway: (settings?: GatewayStopSettings) => Promise<void>;
+  reassignPort: () => Promise<void>;
   updateSettings: (patch: Partial<AppSettings>) => Promise<void>;
   checkForUpdate: () => Promise<void>;
   downloadUpdate: () => Promise<void>;
@@ -457,13 +459,32 @@ export function useAgentGateController(): AgentGateController {
     }
   }
 
-  async function stopGateway(): Promise<void> {
+  async function reassignPort(): Promise<void> {
+    if (commandLock.current) return;
+    commandLock.current = true;
+    setBusy("gateway-start");
+    try {
+      const next = await api.reassignPort();
+      mergeBootstrap(next);
+      setToast({
+        kind: "success",
+        message: fill(m.current.toast.portReassigned, { port: next.gateway.port }),
+      });
+    } catch (error) {
+      setToast({ kind: "error", message: describeError(error) });
+    } finally {
+      commandLock.current = false;
+      setBusy(null);
+    }
+  }
+
+  async function stopGateway(settings?: GatewayStopSettings): Promise<void> {
     if (commandLock.current) return;
     commandLock.current = true;
     setBusy("gateway-stop");
     try {
       const requestId = ++requestSequence.current;
-      const next = await api.stopGateway();
+      const next = await api.stopGateway(settings);
       if (requestId === requestSequence.current) mergeBootstrap(next);
       const skipped = next.gatewayRecovery?.skippedTargets ?? [];
       const targets = skipped.map((target) => CLIENT_META[target].short).join(", ");
@@ -571,6 +592,7 @@ export function useAgentGateController(): AgentGateController {
     openConfig,
     startGateway,
     stopGateway,
+    reassignPort,
     updateSettings,
     checkForUpdate,
     downloadUpdate,

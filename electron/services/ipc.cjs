@@ -1,5 +1,5 @@
 const { z } = require('zod')
-const { SaveProfileSchema, validationMessage } = require('./schemas.cjs')
+const { SaveProfileSchema, TARGETS, validationMessage } = require('./schemas.cjs')
 
 const CHANNELS = Object.freeze({
   bootstrap: 'agentgate:get-bootstrap',
@@ -16,6 +16,7 @@ const CHANNELS = Object.freeze({
   openConfig: 'agentgate:open-config',
   startGateway: 'agentgate:start-gateway',
   stopGateway: 'agentgate:stop-gateway',
+  reassignPort: 'agentgate:reassign-port',
   updateSettings: 'agentgate:update-settings',
   checkForUpdate: 'agentgate:check-for-update',
   downloadUpdate: 'agentgate:download-update',
@@ -25,7 +26,14 @@ const CHANNELS = Object.freeze({
 
 const GatewayStartSchema = z.object({
   port: z.number().int().min(1024).max(65535).optional(),
+  // 省略 = 全部已分配的客户端；给定子集 = 只接管这几个
+  targets: z.array(z.enum(TARGETS)).optional(),
 })
+
+const GatewayStopSchema = z.object({
+  // 省略 = 放掉全部；给定子集 = 只放掉这几个
+  targets: z.array(z.enum(TARGETS)).optional(),
+}).optional()
 
 function changedRoutedConfigFields(existing, input) {
   const changed = []
@@ -206,14 +214,21 @@ function registerIpcHandlers({
     await applyService.startGateway(result.data)
     return getBootstrap()
   })
-  ipcMain.handle(CHANNELS.stopGateway, async () => {
-    const recovery = await applyService.stopGateway()
+  ipcMain.handle(CHANNELS.stopGateway, async (_event, rawSettings) => {
+    const parsed = GatewayStopSchema.safeParse(rawSettings)
+    if (!parsed.success) throw new Error(validationMessage(parsed.error))
+    const recovery = await applyService.stopGateway(parsed.data || {})
     return {
       ...await getBootstrap(),
       gatewayRecovery: {
         skippedTargets: recovery.skippedTargets || [],
       },
     }
+  })
+  ipcMain.handle(CHANNELS.reassignPort, async () => {
+    if (!gatewayService) throw new Error('Local gateway is unavailable')
+    await gatewayService.reassignPort()
+    return getBootstrap()
   })
   ipcMain.handle(CHANNELS.updateSettings, async (_event, patch) => {
     if (!settingsService) throw new Error('Application settings are unavailable')
