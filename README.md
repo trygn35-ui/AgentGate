@@ -6,16 +6,16 @@
 
 **简体中文** · [繁體中文](README.zh-TW.md) · [English](README.en.md) · [日本語](README.ja.md)
 
-**纯本地的 API 方案管理器与回环网关**
+**把 Claude Code、Codex、OpenCode 和 Gemini CLI 的 API 配置放在一个地方管理**
 
-换中转不用改客户端配置 · Key 加密不落地 · 请求实时可观测
+客户端只连接本机。换 Key、换中转或排查请求问题，都不用再翻配置文件。
 
 [![Release](https://img.shields.io/github/v/release/trygn35-ui/agentgate?style=flat-square&color=D97757)](https://github.com/trygn35-ui/agentgate/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/trygn35-ui/agentgate/total?style=flat-square&color=3E9067&label=downloads&cacheSeconds=3600)](https://github.com/trygn35-ui/agentgate/releases)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-2F78D0?style=flat-square)](#下载与安装)
 [![License](https://img.shields.io/github/license/trygn35-ui/agentgate?style=flat-square)](LICENSE)
 
-[下载与安装](#下载与安装) · [快速开始](#快速开始) · [工作原理](#工作原理) · [安全与隐私](#安全与隐私) · [FAQ](#faq)
+[下载与安装](#下载与安装) · [能做什么](#能做什么) · [快速开始](#快速开始) · [安全与隐私](#安全与隐私) · [FAQ](#faq)
 
 <img src="docs/images/overview.png" width="820" alt="Agent;Gate 概览">
 
@@ -23,36 +23,21 @@
 
 ---
 
-## 为什么需要 Agent;Gate
+## 这是什么
 
-如果你同时用 Claude Code、Codex、OpenCode 或 Gemini CLI，并且手上不止一家中转，大概率遇到过这些事：
+我经常在 Claude Code、Codex、OpenCode 和 Gemini CLI 之间切换，但它们的配置格式各不相同。每次换 Key 或换中转都要改好几处，出了问题也很难马上看出卡在哪里，所以做了 Agent;Gate。
 
-- **换一家中转要翻配置文件**。`settings.json`、`config.toml`、环境变量各改一遍，改错了还得回滚。
-- **API Key 明文躺在各处**。客户端配置、`.env`、shell 历史里到处都是你的 Key。
-- **同一个 Key 填很多遍**。四个客户端四种配置格式，加一个方案就要重复四次。
-- **请求出问题看不到现场**。是自己配错了、Key 过期了，还是上游在限流？只能靠猜。
+它是一个 Windows 本地工具，会在 `127.0.0.1` 上启动网关。客户端只需接入一次，之后换上游、换 Key 都可以直接在界面里完成，不用重启客户端。
 
-Agent;Gate 把这些收敛到一处：**方案存在本地，客户端只认一个固定的回环地址，换方案在界面上点一下就好。**
+## 能做什么
 
-|  | 手动改配置 | 环境变量脚本 | **Agent;Gate** |
-| --- | --- | --- | --- |
-| 切换方案 | 改多个文件，易出错 | 需重开终端 | **点一下，客户端零改动** |
-| Key 存放 | 明文散落各处 | 明文在脚本里 | **DPAPI 加密，不写入客户端** |
-| 多客户端同步 | 每个都要改 | 每个都要导 | **一次分配，同时生效** |
-| 请求可观测 | 无 | 无 | **实时首字、Token、缓存率** |
-| 上游故障 | 手动排查再切 | 手动切 | **自动择优切到可用线路** |
-
-## 核心特性
-
-- **一键切换方案** — 网关运行时切换只更新内存路由，客户端配置一个字节都不动，已发出的请求不受影响。
-- **本地回环网关** — 只监听 `127.0.0.1`，为四个客户端提供独立路径槽，不是任意目标的开放代理。
-- **Key 不落客户端** — 真实 URL 与 Key 只交给网关；客户端里只有本地地址和随机本地令牌。
-- **请求实时监控** — 首字/首包时延、Token 用量、缓存命中率、推理强度，按色阶一眼看出异常。
-- **URL 池与自动择优** — 一个方案最多 20 条线路，按 1 小时可用率与平均延迟自动切到最优；当前线路失败立即让路。
-- **渠道实测** — 用真实 Key 发一条最小消息，量真实可用性与时延，并回显上游计量的 Token 用量。
-- **会话管理** — 把 Claude Code / Codex / OpenCode 存在本机的会话摊开在一页：看正文（只留人话，不显示工具调用）、按工作区搜索、删除前先演练列出会动到的每一处。
-- **简繁日英四语** — 简体中文 / 繁體中文（台灣）/ 日本語 / English，可跟随系统或手动指定，切换即时生效。
-- **纯本地运行** — 没有服务端、没有账号、没有遥测，断网也能管理方案。
+- 管理多套 API 方案，并分别分配给 Claude Code、Codex、OpenCode 和 Gemini CLI。
+- 用 Windows DPAPI 加密保存 Key；客户端配置里只留下本地地址和随机令牌。
+- 在网关运行时直接切换方案，不改客户端配置，也不中断已经发出的请求。
+- 查看首字时延、Token、缓存率、推理强度和错误信息，方便判断问题出在本地还是上游。
+- 对同一方案的多条 URL 做真实请求测试，并按可用率和延迟选择线路。
+- 搜索、查看和删除本机的 Claude Code、Codex、OpenCode 会话，删除前可以先确认影响范围。
+- 所有数据都留在本机：没有账号、没有遥测，也不保存请求与响应正文。
 
 ## 工作原理
 
